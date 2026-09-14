@@ -2268,7 +2268,11 @@ export const PosCounter: React.FC<PosCounterProps> = ({
                     type="button"
                     disabled={ticketItems.length === 0}
                     onClick={handleQuickCheckoutWithoutTicket}
-                    className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black py-2 px-1 rounded-xl shadow-xs hover:shadow transition-all active:scale-95 flex flex-col items-center justify-center gap-0.5 text-center cursor-pointer border border-emerald-500 min-h-[46px]"
+                    className={`text-white font-black py-2 px-1 rounded-xl transition-all active:scale-95 flex flex-col items-center justify-center gap-0.5 text-center min-h-[46px] ${
+                      ticketItems.length > 0
+                        ? 'bg-emerald-600 hover:bg-emerald-700 cursor-pointer border-2 border-emerald-300 ring-2 ring-emerald-400 ring-offset-1 shadow-lg shadow-emerald-500/40 blink-sin-ticket'
+                        : 'bg-gradient-to-r from-emerald-600 to-teal-600 opacity-40 cursor-not-allowed border border-emerald-500'
+                    }`}
                     title="Registrar venta en efectivo sin imprimir ticket (animación de dona sonriente)"
                   >
                     <span className="text-sm leading-none">🍩</span>
@@ -2341,7 +2345,7 @@ export const PosCounter: React.FC<PosCounterProps> = ({
               id="mobile-quick-checkout-no-ticket-btn"
               type="button"
               onClick={handleQuickCheckoutWithoutTicket}
-              className="bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black text-[11px] py-2 px-1 rounded-xl shadow-xs flex items-center justify-center gap-1 active:scale-95 cursor-pointer border border-emerald-400 whitespace-nowrap"
+              className="bg-emerald-600 text-white font-black text-[11px] py-2 px-1 rounded-xl shadow-lg border-2 border-emerald-300 ring-2 ring-emerald-400 ring-offset-1 flex items-center justify-center gap-1 active:scale-95 cursor-pointer whitespace-nowrap blink-sin-ticket"
               title="Cobro rápido sin ticket"
             >
               <span>🍩</span>

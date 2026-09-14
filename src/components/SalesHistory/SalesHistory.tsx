@@ -56,6 +56,7 @@ interface SalesHistoryProps {
   settings: Settings;
   onDeleteTicket?: (ticketId: string) => void;
   onUpdateOrder?: (order: BakeryOrder) => void;
+  onClearOrders?: () => void;
 }
 
 // Convert "08:30 AM", "14:15", "03:20 PM" to minutes from 00:00
@@ -93,7 +94,8 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
   driverCustomers = [],
   settings,
   onDeleteTicket,
-  onUpdateOrder
+  onUpdateOrder,
+  onClearOrders
 }) => {
   const todayStr = getTodayString();
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
@@ -599,6 +601,26 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
             <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
             <span>Exportar CSV</span>
           </button>
+
+          {onClearOrders && (
+            <button
+              id="clear-orders-history-btn"
+              type="button"
+              onClick={() => {
+                if (window.confirm('¿Deseas limpiar todos los montos de repartos, pide y recoge y cuentas por cobrar dejándolos en ceros ($0)? (Las ventas y cortes de mostrador se conservarán intactos)')) {
+                  onClearOrders();
+                  playCashSound();
+                  setCloudSyncNotice('🧹 Montos de repartos, pide y recoge y cuentas por cobrar limpiados a ceros ($0).');
+                  setTimeout(() => setCloudSyncNotice(''), 4000);
+                }
+              }}
+              className="bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-800 font-bold px-3 py-2.5 rounded-xl text-xs flex items-center space-x-1.5 transition-colors cursor-pointer border border-rose-200"
+              title="Limpia todos los pedidos de reparto, pide y recoge y montos por cobrar dejándolos en ceros"
+            >
+              <Trash2 className="w-4 h-4 text-rose-600" />
+              <span>Limpiar Repartos y Cobros ($0)</span>
+            </button>
+          )}
         </div>
       </div>
 

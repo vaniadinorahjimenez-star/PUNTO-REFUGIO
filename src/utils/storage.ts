@@ -289,149 +289,7 @@ export const INITIAL_CUSTOMERS: Customer[] = [
   { id: 'c5', name: 'Lucía Mendoza (Cafetería)', phone: '5555667788', points: 120, totalSpent: 2400, visitsCount: 20, lastVisit: getTodayString() },
 ];
 
-export const INITIAL_ORDERS: BakeryOrder[] = [
-  {
-    id: 'ord-101',
-    folio: 'PED-0101',
-    customerName: 'Doña Carmen Ramírez',
-    customerPhone: '5511223344',
-    deliveryType: 'domicilio',
-    address: 'Calle Las Rosas #45, Col. Lindavista (Casa portón blanco)',
-    deliveryDate: getTodayString(),
-    deliveryTime: '16:00',
-    items: [
-      { breadId: 'p10', name: 'Concha Vainilla', category: 'Pan Dulce Tradicional', quantity: 20, unitPrice: 10, total: 200, done: true },
-      { breadId: 'p18', name: 'Cuerno de Mantequilla', category: 'Pan Dulce Tradicional', quantity: 15, unitPrice: 18, total: 270, done: true },
-      { breadId: 'p8', name: 'Bolillo Tradicional', category: 'Bolillo y Telera', quantity: 30, unitPrice: 8, total: 240, done: false },
-    ],
-    total: 710,
-    deposit: 300,
-    pendingAmount: 410,
-    paymentStatus: 'anticipo',
-    assignedDriverId: 'osvaldo',
-    deliveryStatus: 'pendiente',
-    notes: 'Empacar los bolillos en bolsa de papel separada por favor.',
-    createdAt: new Date(Date.now() - 3600000 * 3).toISOString(),
-    coordinates: { lat: 19.4892, lng: -99.1245 },
-    isMonthlyCredit: false,
-    requiresInvoice: false,
-    invoiceStatus: 'no_requerida'
-  },
-  {
-    id: 'ord-102',
-    folio: 'PED-0102',
-    customerName: 'Restaurante Los Portales (Sr. Roberto)',
-    customerPhone: '5522334455',
-    deliveryType: 'domicilio',
-    address: 'Av. Juárez #210, Zona Centro (Entregar por cocina)',
-    deliveryDate: getTodayString(),
-    deliveryTime: '17:30',
-    items: [
-      { breadId: 'p8', name: 'Telera para Torta', category: 'Bolillo y Telera', quantity: 80, unitPrice: 8, total: 640, done: true },
-      { breadId: 'p35', name: 'Baguette Rústica', category: 'Bolillo y Telera', quantity: 10, unitPrice: 35, total: 350, done: false },
-    ],
-    total: 990,
-    deposit: 0,
-    pendingAmount: 990,
-    paymentStatus: 'pendiente',
-    assignedDriverId: 'simon',
-    deliveryStatus: 'pendiente',
-    notes: 'Paga a fin de mes. Enviar factura con remisiones.',
-    createdAt: new Date(Date.now() - 3600000 * 5).toISOString(),
-    coordinates: { lat: 19.4342, lng: -99.1415 },
-    isMonthlyCredit: true,
-    requiresInvoice: true,
-    invoiceStatus: 'facturado',
-    invoiceFolio: 'FAC-2024-089',
-    rfc: 'RLP880412XYZ',
-    businessName: 'Restaurante Los Portales S.A. de C.V.',
-    cfdiUse: 'G03 - Gastos en general'
-  },
-  {
-    id: 'ord-103',
-    folio: 'PED-0103',
-    customerName: 'Cafetería La Esquina / Lucía Mendoza',
-    customerPhone: '5555667788',
-    deliveryType: 'tienda',
-    address: 'Mostrador / Tienda',
-    deliveryDate: getTodayString(),
-    deliveryTime: '08:30',
-    items: [
-      { breadId: 'p10', name: 'Concha Chocolate', category: 'Pan Dulce Tradicional', quantity: 30, unitPrice: 10, total: 300, done: true },
-      { breadId: 'p18', name: 'Cuerno de Mantequilla', category: 'Pan Dulce Tradicional', quantity: 20, unitPrice: 18, total: 360, done: true },
-    ],
-    total: 660,
-    deposit: 0,
-    pendingAmount: 660,
-    paymentStatus: 'pendiente',
-    assignedDriverId: 'ninguno',
-    deliveryStatus: 'entregado',
-    notes: 'Cliente con convenio de pago a fin de mes. Pasa por el pan en la mañana.',
-    createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
-    isMonthlyCredit: true,
-    requiresInvoice: true,
-    invoiceStatus: 'pendiente',
-    rfc: 'MEL920315ABC',
-    businessName: 'Lucía Elena Mendoza Cafeterías',
-    cfdiUse: 'G03 - Gastos en general'
-  },
-  {
-    id: 'ord-104',
-    folio: 'PED-0104',
-    customerName: 'Profra. Patricia Solís',
-    customerPhone: '5566778899',
-    deliveryType: 'tienda',
-    address: 'Recoge en Tienda / Mostrador',
-    deliveryDate: getTodayString(),
-    deliveryTime: '19:00',
-    items: [
-      { breadId: 'p90', name: 'Rosca de Reyes Mediana Tradicional', category: 'Roscas y Especiales', quantity: 1, unitPrice: 90, total: 90, done: true },
-      { breadId: 'p12', name: 'Donas de Chocolate y Canela', category: 'Pan Dulce Tradicional', quantity: 10, unitPrice: 12, total: 120, done: true },
-    ],
-    total: 210,
-    deposit: 0,
-    pendingAmount: 210,
-    paymentStatus: 'pendiente',
-    assignedDriverId: 'ninguno',
-    deliveryStatus: 'pendiente',
-    notes: 'Recoge a las 7:00 PM después del trabajo.',
-    createdAt: new Date(Date.now() - 3600000 * 4).toISOString(),
-    isMonthlyCredit: false,
-    requiresInvoice: false,
-    invoiceStatus: 'no_requerida'
-  },
-  {
-    id: 'ord-105',
-    folio: 'PED-0105',
-    customerName: 'Hospital Santa María (Cafetería)',
-    customerPhone: '5577889900',
-    deliveryType: 'domicilio',
-    address: 'Calzada México Tacuba #890',
-    deliveryDate: getTodayString(),
-    deliveryTime: '15:00',
-    items: [
-      { breadId: 'p10', name: 'Conchas Surtidas', category: 'Pan Dulce Tradicional', quantity: 40, unitPrice: 10, total: 400, done: true },
-      { breadId: 'p25', name: 'Panqués de Nuez', category: 'Panqués y Galletas', quantity: 10, unitPrice: 25, total: 250, done: true },
-    ],
-    total: 650,
-    deposit: 0,
-    pendingAmount: 650,
-    paymentStatus: 'pendiente',
-    assignedDriverId: 'simon',
-    deliveryStatus: 'entregado',
-    collectedAmount: 0,
-    deliveredAt: new Date(Date.now() - 3600000).toISOString(),
-    notes: 'Entregado a recepcionista Lucero. Corte mensual a pagar el día 30.',
-    createdAt: new Date(Date.now() - 3600000 * 6).toISOString(),
-    coordinates: { lat: 19.4520, lng: -99.1820 },
-    isMonthlyCredit: true,
-    requiresInvoice: true,
-    invoiceStatus: 'pendiente',
-    rfc: 'HSM700819KJ1',
-    businessName: 'Hospital Santa María Servicios Médicos S.A.',
-    cfdiUse: 'G03 - Gastos en general'
-  }
-];
+export const INITIAL_ORDERS: BakeryOrder[] = [];
 
 export const INITIAL_TICKETS: SaleTicket[] = [
   {
@@ -901,12 +759,34 @@ export function saveCustomers(customers: Customer[], forceOverwrite: boolean = f
 
 export function loadOrders(): BakeryOrder[] {
   try {
+    // Migración única: Limpiar montos de pedidos de reparto, pide y recoge y por cobrar
+    const clearedFlag = localStorage.getItem('panaderia_orders_zeroed_v2');
+    if (!clearedFlag) {
+      localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify([]));
+      localStorage.setItem('panaderia_orders_zeroed_v2', 'true');
+      return [];
+    }
+
     const raw = localStorage.getItem(STORAGE_KEYS.ORDERS);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((o: BakeryOrder) => !o.id?.startsWith('ord-10') && !o.folio?.startsWith('PED-010'));
+      }
+    }
   } catch (e) {
     console.error('Error loading orders', e);
   }
-  return INITIAL_ORDERS;
+  return [];
+}
+
+export function clearAllOrders(): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify([]));
+    localStorage.setItem('panaderia_orders_zeroed_v2', 'true');
+  } catch (e) {
+    console.error('Error clearing orders', e);
+  }
 }
 
 /**

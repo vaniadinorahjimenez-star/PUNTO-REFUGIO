@@ -24,6 +24,7 @@ import {
   saveCustomers, 
   loadOrders, 
   saveOrders, 
+  clearAllOrders,
   loadDrivers, 
   saveDrivers,
   loadDriverCustomers,
@@ -280,6 +281,12 @@ export default function App() {
     localStorage.clear();
   };
 
+  const handleClearOrders = () => {
+    clearAllOrders();
+    setOrders([]);
+    syncWithCloud({ orders: [] }).catch(console.error);
+  };
+
   const handleToggleZoom = (delta: number) => {
     setZoomLevel(prev => Math.min(2, Math.max(-1, prev + delta)));
   };
@@ -392,6 +399,7 @@ export default function App() {
             settings={settings}
             onDeleteTicket={handleDeleteTicket}
             onUpdateOrder={handleUpdateOrder}
+            onClearOrders={handleClearOrders}
           />
         )}
 
