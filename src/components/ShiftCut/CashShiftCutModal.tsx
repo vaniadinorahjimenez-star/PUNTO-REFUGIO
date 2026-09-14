@@ -51,7 +51,7 @@ interface CashShiftCutModalProps {
   onCutSaved?: (cut: ShiftCutRecord) => void;
 }
 
-const CASHIER_PRESETS = ['Maggie', 'Angy', 'Amari', 'Gabo'];
+const CASHIER_PRESETS = ['Mary', 'Paty', 'Jaz', 'Natty', 'Jonathan'];
 
 const COMMON_EXPENSE_PRESETS = [
   { label: '🚗 Uber / Transporte', concept: 'Uber / Transporte' },
@@ -80,12 +80,14 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
   const [autoTime, setAutoTime] = useState<string>(getNowTimeString());
   const [autoDateFormatted, setAutoDateFormatted] = useState<string>('');
 
-  // Cashier / Person Name (persisted in localStorage or default to Maggie)
+  // Cashier / Person Name (persisted in localStorage or default to Mary)
   const [cashierName, setCashierName] = useState<string>(() => {
     const saved = localStorage.getItem('santafe_last_cashier_name');
     if (saved && CASHIER_PRESETS.includes(saved)) return saved;
-    if (saved && !['Paty', 'Mari', 'Jonathan', 'Natty', 'Mostrador Principal', 'Sin asignar'].includes(saved)) return saved;
-    return 'Maggie';
+    // Si estaba guardado algún cajero anterior ya eliminado, reiniciar a Mary
+    if (saved && ['Maggie', 'Angy', 'Amari', 'Gabo'].includes(saved)) return 'Mary';
+    if (saved && saved.trim()) return saved;
+    return 'Mary';
   });
 
   // Shift Name (Prioridad: lee el turno activo en mostrador, o detecta por horario: antes de 15:00 = Turno 1, >= 15:00 = Turno 2)
@@ -520,8 +522,8 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
                     )}
                   </label>
 
-                  {/* Fast Selector Buttons for Personnel */}
-                  <div className="grid grid-cols-4 gap-1.5 mb-2">
+                  {/* Fast Selector Buttons for Personnel: Mary, Paty, Jaz, Natty, Jonathan */}
+                  <div className="grid grid-cols-5 gap-1 sm:gap-1.5 mb-2">
                     {CASHIER_PRESETS.map((name) => {
                       const isSelected = cashierName === name;
                       return (
@@ -533,11 +535,12 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
                             setCashierName(name);
                             playBeep(600, 'sine', 0.03);
                           }}
-                          className={`py-1.5 px-2 rounded-xl text-xs font-black transition-all cursor-pointer border ${
+                          className={`py-1.5 px-1 sm:px-2 rounded-xl text-[11px] sm:text-xs font-black transition-all cursor-pointer border text-center truncate ${
                             isSelected
                               ? 'bg-amber-600 text-white border-amber-700 shadow-xs ring-2 ring-amber-400/50'
                               : 'bg-white hover:bg-amber-100 text-slate-700 border-amber-200'
                           }`}
+                          title={`Seleccionar ${name}`}
                         >
                           {name}
                         </button>
@@ -935,7 +938,7 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
                     <div>
                       <input
                         type="text"
-                        placeholder="Entregado a / Recibió (Ej. Chofer, Maggie...)"
+                        placeholder="Entregado a / Recibió (Ej. Chofer, Mary, Paty...)"
                         value={newRecipient}
                         onChange={(e) => setNewRecipient(e.target.value)}
                         className="w-full bg-slate-50 px-3 py-1.5 rounded-xl text-xs border border-slate-200 focus:outline-none focus:ring-1 focus:ring-rose-400"
@@ -1317,7 +1320,7 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
                 <div className="pt-2 border-t-2 border-amber-400 flex flex-col sm:flex-row items-center justify-between bg-gradient-to-r from-white via-amber-50/50 to-emerald-50 rounded-2xl p-4 shadow-sm border border-amber-300 gap-3">
                   <div>
                     <span className="text-xs sm:text-sm font-black uppercase tracking-wider text-slate-900 block">
-                      EFECTIVO NETO A RETIRAR / ENTREGAR AL DUEÑO:
+                      CORTE COLOCADO EN BOLSITA:
                     </span>
                     <span className="text-[11px] text-slate-600 block mt-0.5">
                       {hasEnteredActualCash ? (

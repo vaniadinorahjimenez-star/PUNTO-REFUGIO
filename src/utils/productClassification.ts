@@ -45,7 +45,11 @@ const NON_BREAD_KEYWORDS = [
   'yogurt',
   'yoghurt',
   'granola',
-  'hielo'
+  'hielo',
+  'chocolate',
+  'abuelita',
+  'tableta',
+  'tabletilla'
 ];
 
 /**
@@ -72,7 +76,9 @@ export function isNonBreadProduct(item: { name?: string; category?: string; prod
     idLower.startsWith('p_nata') ||
     idLower.startsWith('p_queso') ||
     idLower.startsWith('p_granola') ||
-    idLower.startsWith('p_paleta')
+    idLower.startsWith('p_paleta') ||
+    idLower.startsWith('p_choco_abuelita') ||
+    idLower.startsWith('p_chocolate')
   ) {
     return true;
   }

@@ -137,13 +137,20 @@ export const DEFAULT_PRODUCTS: BreadProduct[] = [
   { id: 'p30', name: 'Pan Relleno / Especial $30', price: 30, category: 'Panqués y Galletas', isQuickPreset: true },
   { id: 'p35_bread', name: 'Panqué Grande / Especial $35', price: 35, category: 'Panqués y Galletas', isQuickPreset: true },
   // Companion & Dairy
-  { id: 'p_leche', name: 'Leche 1 Litro', price: 35, category: 'Lácteos y Acompañamientos', isQuickPreset: true },
-  { id: 'p_lechitas_18', name: 'Lechita Sabor', price: 18, category: 'Lácteos y Acompañamientos', isQuickPreset: true },
+  { id: 'p_leche_grande_35', name: 'Leche Grande $35', price: 35, category: 'Lácteos y Acompañamientos', isQuickPreset: true },
+  { id: 'p_lechitas_18', name: 'Lechita $18', price: 18, category: 'Lácteos y Acompañamientos', isQuickPreset: true },
+  { id: 'p_choco_abuelita_tab_30', name: 'Chocolate Abuelita Tabletilla $30', price: 30, category: 'Lácteos y Acompañamientos', isQuickPreset: true },
+  { id: 'p_choco_abuelita_tab_60', name: 'Chocolate Abuelita Tableta $60', price: 60, category: 'Lácteos y Acompañamientos', isQuickPreset: true },
+  { id: 'p_choco_abuelita_caja_180', name: 'Chocolate Abuelita Caja $180', price: 180, category: 'Lácteos y Acompañamientos', isQuickPreset: true },
   { id: 'p_gelatina_20', name: 'Gelatina', price: 20, category: 'Lácteos y Acompañamientos', isQuickPreset: true },
   { id: 'p_arroz_leche_25', name: 'Arroz con Leche', price: 25, category: 'Lácteos y Acompañamientos', isQuickPreset: true },
   { id: 'p_domo_25', name: 'Charola / Domo $25', price: 25, category: 'Lácteos y Acompañamientos', isQuickPreset: true },
   { id: 'p_nata', name: 'Nata Artesanal', price: 90, category: 'Lácteos y Acompañamientos', isQuickPreset: false },
   { id: 'p_queso', name: 'Queso de Rancho', price: 150, category: 'Lácteos y Acompañamientos', isQuickPreset: false },
+  { id: 'p_granola_160', name: 'Granola Artesanal $160', price: 160, category: 'Lácteos y Acompañamientos', isQuickPreset: true },
+  { id: 'p_paleta_40', name: 'Paleta de Hielo $40', price: 40, category: 'Lácteos y Acompañamientos', isQuickPreset: true },
+  { id: 'p_paleta_45', name: 'Paleta de Hielo $45', price: 45, category: 'Lácteos y Acompañamientos', isQuickPreset: true },
+  { id: 'p_paleta_50', name: 'Paleta de Hielo $50', price: 50, category: 'Lácteos y Acompañamientos', isQuickPreset: true },
   { id: 'p100', name: 'Pastel Individual / Tarta Frutas', price: 100, category: 'Pasteles y Tartas', isQuickPreset: false },
   // Extra catalog items
   { id: 'p_concha_choco', name: 'Concha Especial Chocolate', price: 15, category: 'Pan Dulce Tradicional' },
@@ -618,8 +625,6 @@ export function loadProducts(): BreadProduct[] {
     const raw = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
     if (raw) {
       let stored: BreadProduct[] = JSON.parse(raw);
-      // In Sucursal Zakia no paletas are sold; filter out legacy paleta items
-      stored = stored.filter(p => !p.id.startsWith('p_paleta'));
       const existingIds = new Set(stored.map(p => p.id));
       let updated = false;
       DEFAULT_PRODUCTS.forEach(dp => {

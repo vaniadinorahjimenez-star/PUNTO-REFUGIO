@@ -121,7 +121,7 @@ export function buildShiftCutEscPosBytes(cut: ShiftCutRecord, settings: Settings
   if (cut.actualCashInDrawer !== undefined) {
     encoder.twoColumns('EFECTIVO CONTADO:', `$${cut.actualCashInDrawer}.00`, width);
     if (cut.nextShiftCash !== undefined && cut.nextShiftCash > 0) {
-      encoder.twoColumns('REAL A RETIRAR:', `$${Math.max(0, cut.actualCashInDrawer - cut.nextShiftCash)}.00`, width);
+      encoder.twoColumns('CORTE EN BOLSITA:', `$${Math.max(0, cut.actualCashInDrawer - cut.nextShiftCash)}.00`, width);
     }
     if (cut.difference !== undefined && cut.difference !== 0) {
       const diffLabel = cut.difference > 0 ? 'SOBRANTE:' : 'FALTANTE:';
@@ -306,7 +306,7 @@ export function printShiftCutDirectToPrinter(cut: ShiftCutRecord, settings: Sett
         ${cut.actualCashInDrawer !== undefined ? `
           <div class="row"><span>EFECTIVO CONTADO:</span><span>$${cut.actualCashInDrawer}.00</span></div>
           ${(cut.nextShiftCash !== undefined && cut.nextShiftCash > 0) ? `
-            <div class="row"><span>REAL A RETIRAR:</span><span>$${Math.max(0, cut.actualCashInDrawer - cut.nextShiftCash)}.00</span></div>
+            <div class="row"><span>CORTE EN BOLSITA:</span><span>$${Math.max(0, cut.actualCashInDrawer - cut.nextShiftCash)}.00</span></div>
           ` : ''}
           ${cut.difference !== undefined && cut.difference !== 0 ? `
             <div class="row">

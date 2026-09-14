@@ -43,6 +43,22 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const [currentTime, setCurrentTime] = React.useState<string>('');
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
+  const [activeCashier, setActiveCashier] = useState<string>(() => {
+    const saved = localStorage.getItem('santafe_last_cashier_name');
+    if (saved && ['Mary', 'Paty', 'Jaz', 'Natty', 'Jonathan'].includes(saved)) return saved;
+    return 'Mary';
+  });
+
+  React.useEffect(() => {
+    const updateCashier = () => {
+      const saved = localStorage.getItem('santafe_last_cashier_name');
+      if (saved && ['Mary', 'Paty', 'Jaz', 'Natty', 'Jonathan'].includes(saved)) {
+        setActiveCashier(saved);
+      }
+    };
+    const interval = setInterval(updateCashier, 1500);
+    return () => clearInterval(interval);
+  }, []);
 
   React.useEffect(() => {
     const updateTime = () => {
@@ -267,7 +283,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Cashier Badge */}
           <div className="hidden lg:flex bg-[#FFF5F0] text-[#D95D39] font-bold text-[10px] px-2.5 py-1 rounded-xl items-center gap-1.5 border border-[#E5E1DA]">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span>Caja Activa</span>
+            <span>Mostrador: <strong className="text-slate-900">{activeCashier}</strong></span>
           </div>
 
         </div>

@@ -421,7 +421,7 @@ export const ThermalShiftCutTicket: React.FC<ThermalShiftCutTicketProps> = ({
                   </div>
                   {(cut.nextShiftCash !== undefined && cut.nextShiftCash > 0) && (
                     <div className="flex justify-between">
-                      <span>EFECTIVO REAL A RETIRAR:</span>
+                      <span>CORTE COLOCADO EN BOLSITA:</span>
                       <span>${Math.max(0, cut.actualCashInDrawer - cut.nextShiftCash)}.00</span>
                     </div>
                   )}

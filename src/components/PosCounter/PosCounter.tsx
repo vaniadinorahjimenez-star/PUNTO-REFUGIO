@@ -250,13 +250,22 @@ export const PosCounter: React.FC<PosCounterProps> = ({
   // Descuento 10% Cliente Especial (Sucursal Zakia)
   const [isSpecialCustomerDiscount, setIsSpecialCustomerDiscount] = useState<boolean>(false);
 
-  // Cashier / Person on register presets (Maggie, Angy, Amari, Gabo)
-  const cashierPresets = ['Maggie', 'Angy', 'Amari', 'Gabo'];
+  // Cashier / Person on register presets (Mary, Paty, Jaz, Natty, Jonathan - Punto El Refugio)
+  const cashierPresets = ['Mary', 'Paty', 'Jaz', 'Natty', 'Jonathan'];
   const [activeCashier, setActiveCashier] = useState<string>(() => {
     const saved = localStorage.getItem('santafe_last_cashier_name');
-    if (saved && ['Maggie', 'Angy', 'Amari', 'Gabo'].includes(saved)) return saved;
-    return 'Maggie';
+    if (saved && cashierPresets.includes(saved)) return saved;
+    // Si estaba guardado algún cajero anterior ya eliminado, reiniciar a Mary
+    if (saved && ['Maggie', 'Angy', 'Amari', 'Gabo'].includes(saved)) return 'Mary';
+    if (saved && saved.trim()) return saved;
+    return 'Mary';
   });
+
+  const handleSelectCashier = (name: string) => {
+    setActiveCashier(name);
+    localStorage.setItem('santafe_last_cashier_name', name);
+    playBeep(600, 'sine', 0.04);
+  };
 
   // Cash Change Calculator state for the ticket panel
   const [cashGivenInput, setCashGivenInput] = useState<string>('');
@@ -276,6 +285,16 @@ export const PosCounter: React.FC<PosCounterProps> = ({
 
   // Postres selection modal
   const [showPostresModal, setShowPostresModal] = useState<boolean>(false);
+
+  // Leche selection modal (Lechita $18 o Leche Grande $35)
+  const [showLecheModal, setShowLecheModal] = useState<boolean>(false);
+
+  // Chocolate Abuelita modal (Tableta $60 o Caja $180)
+  const [showChocolateModal, setShowChocolateModal] = useState<boolean>(false);
+
+  // Paletas selection modal (1 a 5 piezas y precios $40, $45, $50)
+  const [showPaletasModal, setShowPaletasModal] = useState<boolean>(false);
+  const [paletasQty, setPaletasQty] = useState<number>(1);
 
   // Precios rápidos de mostrador solicitados: 5, 6.50, 12, 15, 18, 20, 25, 30, 35
   // Eliminados el 8 y los botones del 90 al 100 para que queden exactamente 2 filas de 5 botones (9 de pan + 1 botón manual OTRO)
@@ -301,21 +320,21 @@ export const PosCounter: React.FC<PosCounterProps> = ({
   const companionItems = [
     {
       id: 'p_leche',
-      name: 'Leche $35',
-      title: 'LECHE 35',
+      name: 'Leche',
+      title: 'LECHE',
       price: 35,
       emoji: '🥛',
       tag: 'No es Pan',
-      description: 'Leche 1 Litro'
+      description: 'Lechita $18 / Leche Grande $35'
     },
     {
-      id: 'p_lechitas_18',
-      name: 'Lechita $18',
-      title: 'LECHITA 18',
-      price: 18,
-      emoji: '🧃',
+      id: 'p_choco_abuelita',
+      name: 'Chocolate Abuelita',
+      title: 'CHOCOLATE',
+      price: 30,
+      emoji: '🍫',
       tag: 'No es Pan',
-      description: 'Lechita Sabor'
+      description: 'Tabletilla $30 / Tableta $60 / Caja $180'
     },
     {
       id: 'p_nata',
@@ -336,13 +355,22 @@ export const PosCounter: React.FC<PosCounterProps> = ({
       description: 'Queso Rancho'
     },
     {
-      id: 'p_granola_150',
-      name: 'Granola $150',
-      title: 'GRANOLA 150',
-      price: 150,
+      id: 'p_granola_160',
+      name: 'Granola $160',
+      title: 'GRANOLA 160',
+      price: 160,
       emoji: '🥣',
       tag: 'No es Pan',
       description: 'Granola Artesanal'
+    },
+    {
+      id: 'p_paletas',
+      name: 'Paletas de Hielo',
+      title: 'PALETAS',
+      price: 40,
+      emoji: '🍧',
+      tag: 'No es Pan',
+      description: 'Paletas de Hielo $40, $45, $50'
     },
     {
       id: 'p_domo_25',
@@ -1524,7 +1552,7 @@ export const PosCounter: React.FC<PosCounterProps> = ({
             </div>
           </div>
 
-          {/* PASO 3: Acompañamientos, Lácteos y Postres (Compactos en 1 Sola Fila) */}
+          {/* PASO 3: Acompañamientos, Lácteos y Postres (Compactos en 1 Sola Fila sin hacer 2 filas) */}
           <div className="pt-1 border-t border-dashed border-sky-200">
             <div className="flex items-center justify-between mb-1 px-0.5">
               <div className="flex items-center gap-1.5">
@@ -1541,48 +1569,58 @@ export const PosCounter: React.FC<PosCounterProps> = ({
               </span>
             </div>
 
-            {/* 6 Botones en 1 sola fila: Leche, Lechita, Nata, Queso, Postres, Domo */}
-            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1 sm:gap-1.5">
-              {/* 1. Leche 35 */}
+            {/* 8 Botones en 1 Sola Fila (Leche [Lechita 18/Grande 35], Chocolate [Tableta 60/Caja 180], Nata, Queso, Granola 160, Paletas, Postres, Domo) */}
+            <div className="grid grid-cols-4 sm:grid-cols-8 gap-1">
+              {/* 1. LECHE (Abre Ventana Emergente: Lechita $18 o Leche Grande $35) */}
               <button
-                id="companion-btn-p_leche"
+                id="companion-btn-leche-dropdown"
                 type="button"
-                onPointerDown={(e) => handlePointerDownPrice(e, 35, 'Leche 1L $35', 'p_leche')}
-                onClick={() => triggerAddPriceTouch(35, 'Leche 1L $35', 'p_leche')}
-                className="touch-pos-btn select-none group relative bg-gradient-to-b from-sky-50 to-white hover:from-sky-100 active:from-sky-200 border-2 border-sky-300 hover:border-sky-600 rounded-xl px-1.5 py-1 flex items-center justify-between transition-all duration-75 active:scale-95 shadow-2xs h-[42px] sm:h-[46px] cursor-pointer"
-                title="Leche 1L $35"
+                onPointerDown={(e) => {
+                  if (e.pointerType === 'mouse' && e.button !== 0) return;
+                  playBeep(750, 'sine', 0.04);
+                  setShowLecheModal(true);
+                }}
+                onClick={() => {
+                  playBeep(750, 'sine', 0.04);
+                  setShowLecheModal(true);
+                }}
+                className="touch-pos-btn select-none group relative bg-gradient-to-b from-sky-50 to-white hover:from-sky-100 active:from-sky-200 border-2 border-sky-300 hover:border-sky-600 rounded-xl px-1 py-1 flex items-center justify-between transition-all duration-75 active:scale-95 shadow-2xs h-[42px] sm:h-[46px] cursor-pointer"
+                title="Leche: Lechita $18 o Leche Grande $35"
               >
                 <div className="flex items-center gap-1 min-w-0">
-                  <span className="text-sm shrink-0">🥛</span>
+                  <span className="text-xs sm:text-sm shrink-0">🥛</span>
                   <div className="text-left leading-none truncate">
-                    <div className="text-[11px] font-black text-sky-950 truncate">LECHE</div>
-                    <div className="text-[9px] font-bold text-sky-700 leading-none mt-0.5">$35</div>
+                    <div className="text-[10px] sm:text-[11px] font-black text-sky-950 truncate">LECHE</div>
+                    <div className="text-[8.5px] sm:text-[9px] font-bold text-sky-700 leading-none mt-0.5">18/35</div>
                   </div>
                 </div>
-                <span className="bg-white text-slate-800 px-1 py-0.2 rounded text-[7px] border border-sky-200 font-bold font-mono shrink-0 ml-0.5">
-                  +{selectedMultiplier}
-                </span>
+                <ChevronDown className="w-3 h-3 text-sky-800 shrink-0 group-hover:translate-y-0.5 transition-transform" />
               </button>
 
-              {/* 2. Lechita 18 */}
+              {/* 2. CHOCOLATE ABUELITA (Abre Ventana Emergente: Tabletilla $30, Tableta $60 o Caja $180) */}
               <button
-                id="companion-btn-p_lechita"
+                id="companion-btn-chocolate-dropdown"
                 type="button"
-                onPointerDown={(e) => handlePointerDownPrice(e, 18, 'Lechita $18', 'p_lechitas_18')}
-                onClick={() => triggerAddPriceTouch(18, 'Lechita $18', 'p_lechitas_18')}
-                className="touch-pos-btn select-none group relative bg-gradient-to-b from-sky-50 to-white hover:from-sky-100 active:from-sky-200 border-2 border-sky-300 hover:border-sky-600 rounded-xl px-1.5 py-1 flex items-center justify-between transition-all duration-75 active:scale-95 shadow-2xs h-[42px] sm:h-[46px] cursor-pointer"
-                title="Lechita $18"
+                onPointerDown={(e) => {
+                  if (e.pointerType === 'mouse' && e.button !== 0) return;
+                  playBeep(750, 'sine', 0.04);
+                  setShowChocolateModal(true);
+                }}
+                onClick={() => {
+                  playBeep(750, 'sine', 0.04);
+                  setShowChocolateModal(true);
+                }}
+                className="touch-pos-btn select-none group relative bg-gradient-to-b from-amber-50 to-orange-100 hover:from-amber-100 active:from-orange-200 border-2 border-amber-300 hover:border-amber-600 rounded-xl px-1 py-1 flex items-center justify-between transition-all duration-75 active:scale-95 shadow-2xs h-[42px] sm:h-[46px] cursor-pointer"
+                title="Chocolate Abuelita: Tabletilla $30, Tableta $60 o Caja $180"
               >
                 <div className="flex items-center gap-1 min-w-0">
-                  <span className="text-sm shrink-0">🧃</span>
+                  <span className="text-xs sm:text-sm shrink-0">🍫</span>
                   <div className="text-left leading-none truncate">
-                    <div className="text-[11px] font-black text-sky-950 truncate">LECHITA</div>
-                    <div className="text-[9px] font-bold text-sky-700 leading-none mt-0.5">$18</div>
+                    <div className="text-[10px] sm:text-[11px] font-black text-amber-950 truncate">CHOCOLATE</div>
+                    <div className="text-[8px] sm:text-[8.5px] font-bold text-amber-800 leading-none mt-0.5">30/60/180</div>
                   </div>
                 </div>
-                <span className="bg-white text-slate-800 px-1 py-0.2 rounded text-[7px] border border-sky-200 font-bold font-mono shrink-0 ml-0.5">
-                  +{selectedMultiplier}
-                </span>
+                <ChevronDown className="w-3 h-3 text-amber-800 shrink-0 group-hover:translate-y-0.5 transition-transform" />
               </button>
 
               {/* 3. Nata 90 */}
@@ -1591,17 +1629,17 @@ export const PosCounter: React.FC<PosCounterProps> = ({
                 type="button"
                 onPointerDown={(e) => handlePointerDownPrice(e, 90, 'Nata $90', 'p_nata')}
                 onClick={() => triggerAddPriceTouch(90, 'Nata $90', 'p_nata')}
-                className="touch-pos-btn select-none group relative bg-gradient-to-b from-sky-50 to-white hover:from-sky-100 active:from-sky-200 border-2 border-sky-300 hover:border-sky-600 rounded-xl px-1.5 py-1 flex items-center justify-between transition-all duration-75 active:scale-95 shadow-2xs h-[42px] sm:h-[46px] cursor-pointer"
+                className="touch-pos-btn select-none group relative bg-gradient-to-b from-sky-50 to-white hover:from-sky-100 active:from-sky-200 border-2 border-sky-300 hover:border-sky-600 rounded-xl px-1 py-1 flex items-center justify-between transition-all duration-75 active:scale-95 shadow-2xs h-[42px] sm:h-[46px] cursor-pointer"
                 title="Nata $90"
               >
                 <div className="flex items-center gap-1 min-w-0">
-                  <span className="text-sm shrink-0">🍶</span>
+                  <span className="text-xs sm:text-sm shrink-0">🍶</span>
                   <div className="text-left leading-none truncate">
-                    <div className="text-[11px] font-black text-sky-950 truncate">NATA</div>
-                    <div className="text-[9px] font-bold text-sky-700 leading-none mt-0.5">$90</div>
+                    <div className="text-[10px] sm:text-[11px] font-black text-sky-950 truncate">NATA</div>
+                    <div className="text-[8.5px] sm:text-[9px] font-bold text-sky-700 leading-none mt-0.5">$90</div>
                   </div>
                 </div>
-                <span className="bg-white text-slate-800 px-1 py-0.2 rounded text-[7px] border border-sky-200 font-bold font-mono shrink-0 ml-0.5">
+                <span className="bg-white text-slate-800 px-0.5 py-0.2 rounded text-[7px] border border-sky-200 font-bold font-mono shrink-0">
                   +{selectedMultiplier}
                 </span>
               </button>
@@ -1612,22 +1650,71 @@ export const PosCounter: React.FC<PosCounterProps> = ({
                 type="button"
                 onPointerDown={(e) => handlePointerDownPrice(e, 150, 'Queso $150', 'p_queso')}
                 onClick={() => triggerAddPriceTouch(150, 'Queso $150', 'p_queso')}
-                className="touch-pos-btn select-none group relative bg-gradient-to-b from-sky-50 to-white hover:from-sky-100 active:from-sky-200 border-2 border-sky-300 hover:border-sky-600 rounded-xl px-1.5 py-1 flex items-center justify-between transition-all duration-75 active:scale-95 shadow-2xs h-[42px] sm:h-[46px] cursor-pointer"
+                className="touch-pos-btn select-none group relative bg-gradient-to-b from-sky-50 to-white hover:from-sky-100 active:from-sky-200 border-2 border-sky-300 hover:border-sky-600 rounded-xl px-1 py-1 flex items-center justify-between transition-all duration-75 active:scale-95 shadow-2xs h-[42px] sm:h-[46px] cursor-pointer"
                 title="Queso $150"
               >
                 <div className="flex items-center gap-1 min-w-0">
-                  <span className="text-sm shrink-0">🧀</span>
+                  <span className="text-xs sm:text-sm shrink-0">🧀</span>
                   <div className="text-left leading-none truncate">
-                    <div className="text-[11px] font-black text-sky-950 truncate">QUESO</div>
-                    <div className="text-[9px] font-bold text-sky-700 leading-none mt-0.5">$150</div>
+                    <div className="text-[10px] sm:text-[11px] font-black text-sky-950 truncate">QUESO</div>
+                    <div className="text-[8.5px] sm:text-[9px] font-bold text-sky-700 leading-none mt-0.5">$150</div>
                   </div>
                 </div>
-                <span className="bg-white text-slate-800 px-1 py-0.2 rounded text-[7px] border border-sky-200 font-bold font-mono shrink-0 ml-0.5">
+                <span className="bg-white text-slate-800 px-0.5 py-0.2 rounded text-[7px] border border-sky-200 font-bold font-mono shrink-0">
                   +{selectedMultiplier}
                 </span>
               </button>
 
-              {/* 5. POSTRES */}
+              {/* 5. Granola 160 */}
+              <button
+                id="companion-btn-p_granola"
+                type="button"
+                onPointerDown={(e) => handlePointerDownPrice(e, 160, 'Granola Artesanal $160', 'p_granola_160')}
+                onClick={() => triggerAddPriceTouch(160, 'Granola Artesanal $160', 'p_granola_160')}
+                className="touch-pos-btn select-none group relative bg-gradient-to-b from-amber-50 to-orange-50 hover:from-amber-100 active:from-orange-200 border-2 border-amber-300 hover:border-amber-500 rounded-xl px-1 py-1 flex items-center justify-between transition-all duration-75 active:scale-95 shadow-2xs h-[42px] sm:h-[46px] cursor-pointer"
+                title="Granola Artesanal $160"
+              >
+                <div className="flex items-center gap-1 min-w-0">
+                  <span className="text-xs sm:text-sm shrink-0">🥣</span>
+                  <div className="text-left leading-none truncate">
+                    <div className="text-[10px] sm:text-[11px] font-black text-amber-950 truncate">GRANOLA</div>
+                    <div className="text-[8.5px] sm:text-[9px] font-bold text-amber-800 leading-none mt-0.5">$160</div>
+                  </div>
+                </div>
+                <span className="bg-white text-slate-800 px-0.5 py-0.2 rounded text-[7px] border border-amber-200 font-bold font-mono shrink-0">
+                  +{selectedMultiplier}
+                </span>
+              </button>
+
+              {/* 6. Paletas de Hielo 40, 45, 50 (Abre Ventana Emergente con cantidades 1 al 5 y precios) */}
+              <button
+                id="companion-btn-paletas-dropdown"
+                type="button"
+                onPointerDown={(e) => {
+                  if (e.pointerType === 'mouse' && e.button !== 0) return;
+                  playBeep(750, 'sine', 0.04);
+                  setPaletasQty(selectedMultiplier >= 1 && selectedMultiplier <= 5 ? selectedMultiplier : 1);
+                  setShowPaletasModal(true);
+                }}
+                onClick={() => {
+                  playBeep(750, 'sine', 0.04);
+                  setPaletasQty(selectedMultiplier >= 1 && selectedMultiplier <= 5 ? selectedMultiplier : 1);
+                  setShowPaletasModal(true);
+                }}
+                className="touch-pos-btn select-none group relative bg-gradient-to-b from-purple-50 to-fuchsia-100 hover:from-purple-100 active:from-fuchsia-200 border-2 border-purple-300 hover:border-purple-500 rounded-xl px-1 py-1 flex items-center justify-between transition-all duration-75 active:scale-95 shadow-2xs h-[42px] sm:h-[46px] cursor-pointer"
+                title="Paletas de Hielo $40, $45, $50"
+              >
+                <div className="flex items-center gap-1 min-w-0">
+                  <span className="text-xs sm:text-sm shrink-0">🍧</span>
+                  <div className="text-left leading-none truncate">
+                    <div className="text-[10px] sm:text-[11px] font-black text-purple-950 truncate">PALETAS</div>
+                    <div className="text-[8.5px] sm:text-[9px] font-bold text-purple-800 leading-none mt-0.5">40/45/50</div>
+                  </div>
+                </div>
+                <ChevronDown className="w-3 h-3 text-purple-800 shrink-0 group-hover:translate-y-0.5 transition-transform" />
+              </button>
+
+              {/* 7. POSTRES */}
               <button
                 id="companion-btn-postres-dropdown"
                 type="button"
@@ -1640,36 +1727,36 @@ export const PosCounter: React.FC<PosCounterProps> = ({
                   playBeep(750, 'sine', 0.04);
                   setShowPostresModal(true);
                 }}
-                className="touch-pos-btn select-none group relative bg-gradient-to-b from-pink-50 to-rose-100 hover:from-pink-100 active:from-rose-200 border-2 border-pink-300 hover:border-pink-500 rounded-xl px-1.5 py-1 flex items-center justify-between transition-all duration-75 active:scale-95 shadow-2xs h-[42px] sm:h-[46px] cursor-pointer"
+                className="touch-pos-btn select-none group relative bg-gradient-to-b from-pink-50 to-rose-100 hover:from-pink-100 active:from-rose-200 border-2 border-pink-300 hover:border-pink-500 rounded-xl px-1 py-1 flex items-center justify-between transition-all duration-75 active:scale-95 shadow-2xs h-[42px] sm:h-[46px] cursor-pointer"
                 title="Postres: Gelatina $20 o Arroz con Leche $25"
               >
                 <div className="flex items-center gap-1 min-w-0">
-                  <span className="text-sm shrink-0">🍮</span>
+                  <span className="text-xs sm:text-sm shrink-0">🍮</span>
                   <div className="text-left leading-none truncate">
-                    <div className="text-[11px] font-black text-pink-950 truncate">POSTRE</div>
-                    <div className="text-[9px] font-bold text-pink-800 leading-none mt-0.5">$20/$25</div>
+                    <div className="text-[10px] sm:text-[11px] font-black text-pink-950 truncate">POSTRE</div>
+                    <div className="text-[8.5px] sm:text-[9px] font-bold text-pink-800 leading-none mt-0.5">$20/$25</div>
                   </div>
                 </div>
                 <ChevronDown className="w-3 h-3 text-pink-800 shrink-0 group-hover:translate-y-0.5 transition-transform" />
               </button>
 
-              {/* 6. CHAROLA / DOMO 25 */}
+              {/* 8. CHAROLA / DOMO 25 */}
               <button
                 id="companion-btn-domo-25"
                 type="button"
                 onPointerDown={(e) => handlePointerDownPrice(e, 25, 'Charola / Domo $25', 'p_domo_25')}
                 onClick={() => triggerAddPriceTouch(25, 'Charola / Domo $25', 'p_domo_25')}
-                className="touch-pos-btn select-none group relative bg-gradient-to-b from-amber-50 to-orange-100 hover:from-amber-100 active:from-orange-200 border-2 border-amber-400 hover:border-amber-600 rounded-xl px-1.5 py-1 flex items-center justify-between transition-all duration-75 active:scale-95 shadow-2xs h-[42px] sm:h-[46px] cursor-pointer"
+                className="touch-pos-btn select-none group relative bg-gradient-to-b from-slate-50 to-amber-100 hover:from-amber-100 active:from-amber-200 border-2 border-amber-300 hover:border-amber-500 rounded-xl px-1 py-1 flex items-center justify-between transition-all duration-75 active:scale-95 shadow-2xs h-[42px] sm:h-[46px] cursor-pointer"
                 title="Charola / Domo para empaque"
               >
                 <div className="flex items-center gap-1 min-w-0">
-                  <span className="text-sm shrink-0">🍱</span>
+                  <span className="text-xs sm:text-sm shrink-0">🍱</span>
                   <div className="text-left leading-none truncate">
-                    <div className="text-[11px] font-black text-amber-950 truncate">DOMO</div>
-                    <div className="text-[9px] font-bold text-amber-800 leading-none mt-0.5">$25</div>
+                    <div className="text-[10px] sm:text-[11px] font-black text-amber-950 truncate">DOMO</div>
+                    <div className="text-[8.5px] sm:text-[9px] font-bold text-amber-800 leading-none mt-0.5">$25</div>
                   </div>
                 </div>
-                <span className="bg-white text-slate-800 px-1 py-0.2 rounded text-[7px] border border-amber-300 font-bold font-mono shrink-0 ml-0.5">
+                <span className="bg-white text-slate-800 px-0.5 py-0.2 rounded text-[7px] border border-amber-300 font-bold font-mono shrink-0">
                   +{selectedMultiplier}
                 </span>
               </button>
@@ -2221,7 +2308,7 @@ export const PosCounter: React.FC<PosCounterProps> = ({
                   </button>
                 </div>
 
-                {/* BOTÓN: CORTE DE CAJA / TURNO (Maggie, Angy, Amari, Gabo) */}
+                {/* BOTÓN: CORTE DE CAJA / TURNO (Mary, Paty, Jaz, Natty, Jonathan) */}
                 <button
                   id="shift-cut-open-btn"
                   type="button"
@@ -2230,7 +2317,7 @@ export const PosCounter: React.FC<PosCounterProps> = ({
                     setShowShiftCutModal(true);
                   }}
                   className="w-full bg-[#FAF8F6] hover:bg-[#FFF5F0] text-slate-900 hover:text-[#D95D39] border border-amber-300 hover:border-[#D95D39] font-black py-1 px-3 rounded-lg shadow-2xs transition-all active:scale-98 flex items-center justify-center gap-1.5 text-xs cursor-pointer"
-                  title="Abrir ventana de Corte de Caja / Corte del Turno (Maggie, Angy, Amari, Gabo)"
+                  title="Abrir ventana de Corte de Caja / Corte del Turno (Mary, Paty, Jaz, Natty, Jonathan)"
                 >
                   <Receipt className="w-3 h-3 text-[#D95D39]" />
                   <span>Corte de Caja / Turno 📋</span>
@@ -3010,6 +3097,349 @@ export const PosCounter: React.FC<PosCounterProps> = ({
             <button
               type="button"
               onClick={() => setShowPostresModal(false)}
+              className="w-full py-2.5 rounded-xl border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50 cursor-pointer"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal / Selector Rápido de Leche (Lechita 18 o Leche Grande 35) */}
+      {showLecheModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-5 shadow-2xl max-w-sm w-full border-2 border-sky-400 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-sky-100">
+              <div className="flex items-center gap-2">
+                <span className="text-3xl">🥛</span>
+                <div>
+                  <h3 className="font-black text-lg text-slate-900 leading-tight">
+                    Seleccionar Leche
+                  </h3>
+                  <p className="text-xs text-sky-800 font-bold">
+                    Se agregarán {selectedMultiplier} {selectedMultiplier === 1 ? 'pieza' : 'piezas'}
+                  </p>
+                </div>
+              </div>
+              <button
+                id="close-leche-modal-btn"
+                type="button"
+                onClick={() => setShowLecheModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-full hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 my-4">
+              <button
+                id="leche-opt-lechita-18"
+                type="button"
+                onClick={() => {
+                  handleAddPrice(18, 'Lechita $18', 'p_lechitas_18');
+                  setShowLecheModal(false);
+                }}
+                className="group relative bg-gradient-to-b from-sky-50 to-white hover:from-sky-100 hover:to-sky-50 border-2 border-sky-300 hover:border-sky-500 rounded-2xl p-4 flex flex-col items-center justify-center text-center transition-all active:scale-95 shadow-sm hover:shadow-md cursor-pointer h-28"
+              >
+                <span className="text-3xl mb-1">🧃</span>
+                <span className="text-2xl font-black text-sky-950 group-hover:text-sky-700 tracking-tight">
+                  $18
+                </span>
+                <span className="text-xs font-black text-sky-900 mt-0.5">
+                  Lechita
+                </span>
+                {selectedMultiplier > 1 && (
+                  <span className="mt-1 bg-sky-600 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full shadow-xs">
+                    =${selectedMultiplier * 18}
+                  </span>
+                )}
+              </button>
+
+              <button
+                id="leche-opt-grande-35"
+                type="button"
+                onClick={() => {
+                  handleAddPrice(35, 'Leche Grande $35', 'p_leche_grande_35');
+                  setShowLecheModal(false);
+                }}
+                className="group relative bg-gradient-to-b from-blue-50 to-white hover:from-blue-100 hover:to-blue-50 border-2 border-blue-300 hover:border-blue-500 rounded-2xl p-4 flex flex-col items-center justify-center text-center transition-all active:scale-95 shadow-sm hover:shadow-md cursor-pointer h-28"
+              >
+                <span className="text-3xl mb-1">🥛</span>
+                <span className="text-2xl font-black text-blue-950 group-hover:text-blue-700 tracking-tight">
+                  $35
+                </span>
+                <span className="text-xs font-black text-blue-900 mt-0.5">
+                  Leche Grande
+                </span>
+                {selectedMultiplier > 1 && (
+                  <span className="mt-1 bg-blue-600 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full shadow-xs">
+                    =${selectedMultiplier * 35}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowLecheModal(false)}
+              className="w-full py-2.5 rounded-xl border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50 cursor-pointer"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal / Selector Rápido de Chocolate Abuelita (Tableta 60 o Caja 180) */}
+      {showChocolateModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-5 shadow-2xl max-w-md w-full border-2 border-amber-400 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-amber-100">
+              <div className="flex items-center gap-2">
+                <span className="text-3xl">🍫</span>
+                <div>
+                  <h3 className="font-black text-lg text-slate-900 leading-tight">
+                    Chocolate Abuelita
+                  </h3>
+                  <p className="text-xs text-amber-800 font-bold">
+                    Se agregarán {selectedMultiplier} {selectedMultiplier === 1 ? 'pieza' : 'piezas'}
+                  </p>
+                </div>
+              </div>
+              <button
+                id="close-chocolate-modal-btn"
+                type="button"
+                onClick={() => setShowChocolateModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-full hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2.5 my-4">
+              <button
+                id="chocolate-opt-tabletilla-30"
+                type="button"
+                onClick={() => {
+                  handleAddPrice(30, 'Chocolate Abuelita Tabletilla $30', 'p_choco_abuelita_tab_30');
+                  setShowChocolateModal(false);
+                }}
+                className="group relative bg-gradient-to-b from-amber-50 to-white hover:from-amber-100 hover:to-amber-50 border-2 border-amber-300 hover:border-amber-500 rounded-2xl p-3 flex flex-col items-center justify-center text-center transition-all active:scale-95 shadow-sm hover:shadow-md cursor-pointer h-28"
+              >
+                <span className="text-2xl mb-1">🍫</span>
+                <span className="text-xl font-black text-amber-950 group-hover:text-amber-700 tracking-tight">
+                  $30
+                </span>
+                <span className="text-[11px] font-black text-amber-900 mt-0.5 truncate max-w-full">
+                  Tabletilla
+                </span>
+                {selectedMultiplier > 1 && (
+                  <span className="mt-1 bg-amber-600 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full shadow-xs">
+                    =${selectedMultiplier * 30}
+                  </span>
+                )}
+              </button>
+
+              <button
+                id="chocolate-opt-tableta-60"
+                type="button"
+                onClick={() => {
+                  handleAddPrice(60, 'Chocolate Abuelita Tableta $60', 'p_choco_abuelita_tab_60');
+                  setShowChocolateModal(false);
+                }}
+                className="group relative bg-gradient-to-b from-amber-50 to-white hover:from-amber-100 hover:to-amber-50 border-2 border-amber-300 hover:border-amber-500 rounded-2xl p-3 flex flex-col items-center justify-center text-center transition-all active:scale-95 shadow-sm hover:shadow-md cursor-pointer h-28"
+              >
+                <span className="text-2xl mb-1">🍫</span>
+                <span className="text-xl font-black text-amber-950 group-hover:text-amber-700 tracking-tight">
+                  $60
+                </span>
+                <span className="text-[11px] font-black text-amber-900 mt-0.5 truncate max-w-full">
+                  Tableta
+                </span>
+                {selectedMultiplier > 1 && (
+                  <span className="mt-1 bg-amber-600 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full shadow-xs">
+                    =${selectedMultiplier * 60}
+                  </span>
+                )}
+              </button>
+
+              <button
+                id="chocolate-opt-caja-180"
+                type="button"
+                onClick={() => {
+                  handleAddPrice(180, 'Chocolate Abuelita Caja $180', 'p_choco_abuelita_caja_180');
+                  setShowChocolateModal(false);
+                }}
+                className="group relative bg-gradient-to-b from-orange-50 to-white hover:from-orange-100 hover:to-orange-50 border-2 border-orange-300 hover:border-orange-500 rounded-2xl p-3 flex flex-col items-center justify-center text-center transition-all active:scale-95 shadow-sm hover:shadow-md cursor-pointer h-28"
+              >
+                <span className="text-2xl mb-1">📦</span>
+                <span className="text-xl font-black text-orange-950 group-hover:text-orange-700 tracking-tight">
+                  $180
+                </span>
+                <span className="text-[11px] font-black text-orange-900 mt-0.5 truncate max-w-full">
+                  Caja
+                </span>
+                {selectedMultiplier > 1 && (
+                  <span className="mt-1 bg-orange-600 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full shadow-xs">
+                    =${selectedMultiplier * 180}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowChocolateModal(false)}
+              className="w-full py-2.5 rounded-xl border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50 cursor-pointer"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal / Selector Rápido de Paletas (Cantidades del 1 al 5 y Precios $40, $45, $50 en la misma ventana emergente) */}
+      {showPaletasModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-5 shadow-2xl max-w-sm w-full border-2 border-purple-400 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-purple-100">
+              <div className="flex items-center gap-2">
+                <span className="text-3xl">🍧</span>
+                <div>
+                  <h3 className="font-black text-lg text-slate-900 leading-tight">
+                    Paletas de Hielo
+                  </h3>
+                  <p className="text-xs text-purple-800 font-bold">
+                    Elige cantidad (1 a 5) y luego el precio
+                  </p>
+                </div>
+              </div>
+              <button
+                id="close-paletas-modal-btn"
+                type="button"
+                onClick={() => setShowPaletasModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-full hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Paso 1 en la ventana: Selección de Cantidad del 1 al 5 */}
+            <div className="my-3">
+              <div className="flex items-center justify-between mb-1.5 px-1">
+                <span className="text-[11px] font-black uppercase text-purple-950 tracking-wider">
+                  1. Cantidad de Paletas:
+                </span>
+                <span className="text-xs font-black text-purple-700 font-mono bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200">
+                  {paletasQty} {paletasQty === 1 ? 'paleta' : 'paletas'}
+                </span>
+              </div>
+              <div className="grid grid-cols-5 gap-1.5">
+                {[1, 2, 3, 4, 5].map((qty) => {
+                  const isSelected = paletasQty === qty;
+                  return (
+                    <button
+                      key={qty}
+                      id={`paleta-qty-btn-${qty}`}
+                      type="button"
+                      onClick={() => {
+                        playBeep(520 + qty * 40, 'sine', 0.04);
+                        setPaletasQty(qty);
+                      }}
+                      className={`h-12 rounded-xl font-black text-lg flex flex-col items-center justify-center transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-purple-600 text-white shadow-md ring-2 ring-purple-400 scale-102'
+                          : 'bg-purple-50/70 hover:bg-purple-100 text-purple-950 border border-purple-200 hover:border-purple-400'
+                      }`}
+                    >
+                      <span className="leading-none">{qty}</span>
+                      <span className={`text-[8px] font-bold leading-none mt-0.5 ${isSelected ? 'text-purple-100' : 'text-purple-600'}`}>
+                        {qty === 1 ? 'pza' : 'pzs'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Paso 2 en la ventana: Selección de Precio ($40, $45, $50) */}
+            <div className="my-3">
+              <div className="flex items-center justify-between mb-1.5 px-1">
+                <span className="text-[11px] font-black uppercase text-purple-950 tracking-wider">
+                  2. Precio de las Paletas:
+                </span>
+                <span className="text-[10px] text-slate-500 font-semibold">
+                  Toca para agregar
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {[40, 45, 50].map((price) => {
+                  const total = paletasQty * price;
+                  return (
+                    <button
+                      key={price}
+                      id={`paleta-price-btn-${price}`}
+                      type="button"
+                      onClick={() => {
+                        playBeep(800, 'sine', 0.05);
+                        const itemId = `p_paleta_${price}`;
+                        const itemName = `Paleta de Hielo $${price}`;
+                        const qtyToAdd = paletasQty > 0 ? paletasQty : 1;
+                        
+                        setTicketItems((prev) => {
+                          const existingIndex = prev.findIndex(
+                            (item) => (item.productId === itemId || item.name === itemName) && item.price === price
+                          );
+                          const totalItemPrice = price * qtyToAdd;
+
+                          if (existingIndex >= 0) {
+                            const updated = [...prev];
+                            const curr = updated[existingIndex];
+                            const newQty = curr.quantity + qtyToAdd;
+                            updated[existingIndex] = {
+                              ...curr,
+                              quantity: newQty,
+                              total: newQty * curr.price
+                            };
+                            return updated;
+                          }
+
+                          return [
+                            ...prev,
+                            {
+                              id: `item-${Date.now()}-${Math.random()}`,
+                              productId: itemId,
+                              name: itemName,
+                              price: price,
+                              quantity: qtyToAdd,
+                              total: totalItemPrice
+                            }
+                          ];
+                        });
+
+                        setShowPaletasModal(false);
+                      }}
+                      className="group relative bg-gradient-to-b from-purple-50 to-white hover:from-purple-100 hover:to-purple-50 border-2 border-purple-300 hover:border-purple-600 rounded-2xl p-3 flex flex-col items-center justify-center text-center transition-all active:scale-95 shadow-xs hover:shadow-md cursor-pointer h-24"
+                    >
+                      <span className="text-xl font-black text-purple-950 group-hover:text-purple-700 tracking-tight">
+                        ${price}
+                      </span>
+                      <span className="text-[10px] font-black text-purple-800 mt-0.5">
+                        Paleta
+                      </span>
+                      <span className="mt-1 bg-purple-600 text-white text-[9px] font-black px-1.5 py-0.2 rounded-full shadow-xs font-mono">
+                        =${total}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <button
+              id="cancel-paletas-modal-btn"
+              type="button"
+              onClick={() => setShowPaletasModal(false)}
               className="w-full py-2.5 rounded-xl border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50 cursor-pointer"
             >
               Cancelar
@@ -3850,7 +4280,13 @@ export const PosCounter: React.FC<PosCounterProps> = ({
       {showShiftCutModal && (
         <CashShiftCutModal
           isOpen={showShiftCutModal}
-          onClose={() => setShowShiftCutModal(false)}
+          onClose={() => {
+            setShowShiftCutModal(false);
+            const saved = localStorage.getItem('santafe_last_cashier_name');
+            if (saved && saved.trim() && saved !== activeCashier) {
+              setActiveCashier(saved.trim());
+            }
+          }}
           tickets={tickets}
           settings={settings}
         />
