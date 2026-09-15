@@ -92,39 +92,48 @@ export const ThermalShiftCutTicket: React.FC<ThermalShiftCutTicketProps> = ({
 
             {/* Quick Summary Cards */}
             <div className="space-y-2">
-              <div className="bg-black/40 rounded-2xl p-3 border border-white/10 space-y-1">
+              <div className="bg-black/40 rounded-2xl p-3 border border-white/10 space-y-1.5">
                 <div className="flex items-baseline justify-between">
-                  <span className="text-xs text-slate-300 font-bold">Total en Cajón:</span>
-                  <span className="text-lg font-black text-amber-400 font-mono">
-                    ${cut.expectedCashInDrawer}.00
+                  <span className="text-xs text-slate-300 font-bold">1. Tenía que Haber en Bolsita:</span>
+                  <span className="text-base font-black text-amber-400 font-mono">
+                    ${cut.expectedInBag !== undefined ? cut.expectedInBag : (cut.totalCashSales - cut.totalOutflows)}.00
                   </span>
                 </div>
-                {(cut.nextShiftCash !== undefined && cut.nextShiftCash > 0) && (
-                  <div className="flex items-baseline justify-between text-xs text-indigo-300">
-                    <span>Fondo Sig. Turno:</span>
-                    <span className="font-mono font-bold">-${cut.nextShiftCash}.00</span>
-                  </div>
-                )}
-                {(cut.actualCashInDrawer !== undefined) && (
-                  <div className="flex items-baseline justify-between text-xs text-amber-200 pt-1 border-t border-white/10">
-                    <span>Efectivo Contado (Físico):</span>
-                    <span className="font-mono font-black">${cut.actualCashInDrawer}.00</span>
-                  </div>
-                )}
-                {(cut.difference !== undefined) && (
-                  <div className={`flex items-baseline justify-between text-xs font-black ${
-                    cut.difference === 0 ? 'text-emerald-300' : cut.difference > 0 ? 'text-teal-300' : 'text-rose-300'
-                  }`}>
-                    <span>Cuadre / Diferencia:</span>
-                    <span className="font-mono">
-                      {cut.difference === 0 ? '✅ $0.00 (Cuadrada)' : cut.difference > 0 ? `🟢 +$${cut.difference}.00 (Sobrante)` : `🔴 -$${Math.abs(cut.difference)}.00 (Faltante)`}
-                    </span>
-                  </div>
-                )}
+                
+                <div className="flex items-baseline justify-between">
+                  <span className="text-xs text-emerald-300 font-bold">2. Realmente Quedó Contado:</span>
+                  <span className="text-lg font-black text-emerald-400 font-mono">
+                    ${cut.actualInBag !== undefined ? cut.actualInBag : (cut.actualCashInDrawer ?? cut.cashToDeliver ?? (cut.totalCashSales - cut.totalOutflows))}.00
+                  </span>
+                </div>
+
+                <div className="flex items-baseline justify-between text-xs text-indigo-300">
+                  <span>En Caja Quedan (Cambio):</span>
+                  <span className="font-mono font-bold">${cut.nextShiftCash !== undefined ? cut.nextShiftCash : 1000}.00</span>
+                </div>
+
+                {(() => {
+                  const bagDiff = cut.bagDifference !== undefined ? cut.bagDifference : (cut.difference || 0);
+                  return (
+                    <div className={`flex items-baseline justify-between text-xs font-black pt-1 border-t border-white/10 ${
+                      bagDiff === 0 ? 'text-emerald-300' : bagDiff > 0 ? 'text-teal-300' : 'text-rose-300'
+                    }`}>
+                      <span>Diferencia en Bolsita:</span>
+                      <span className="font-mono">
+                        {bagDiff === 0 
+                          ? '✅ $0.00 (Cuadrada)' 
+                          : bagDiff > 0 
+                            ? `🟢 +$${bagDiff}.00 (Sobrante)` 
+                            : `🔴 -$${Math.abs(bagDiff)}.00 (Faltante)`}
+                      </span>
+                    </div>
+                  );
+                })()}
+
                 <div className="flex items-baseline justify-between pt-1 border-t border-white/10">
-                  <span className="text-xs text-emerald-300 font-black uppercase tracking-wider">A Entregar:</span>
+                  <span className="text-xs text-emerald-300 font-black uppercase tracking-wider">A Entregar en Bolsita:</span>
                   <span className="text-2xl font-black text-emerald-400 font-mono">
-                    ${cut.cashToDeliver !== undefined ? cut.cashToDeliver : Math.max(0, cut.expectedCashInDrawer - (cut.nextShiftCash || 0))}.00
+                    ${cut.actualInBag !== undefined ? cut.actualInBag : (cut.cashToDeliver !== undefined ? cut.cashToDeliver : Math.max(0, cut.expectedCashInDrawer - (cut.nextShiftCash || 0)))}.00
                   </span>
                 </div>
               </div>
@@ -270,71 +279,120 @@ export const ThermalShiftCutTicket: React.FC<ThermalShiftCutTicketProps> = ({
               </div>
             </div>
 
-            {/* Sales Summary Section */}
+            {/* 1. CÁLCULO DE LA BOLSITA CONFORME A LAS VENTAS (ARRIBA) */}
             <div className="py-2 border-b-2 border-dashed border-black text-[11px] font-black space-y-1">
-              <div className="text-[11px] uppercase tracking-wide border-b border-black pb-0.5">
-                RESUMEN DE VENTAS:
+              <div className="text-[11px] uppercase tracking-wide border-b-2 border-black pb-0.5 text-center font-black">
+                CRUCE DE BOLSITA: TENIA QUE PONERSE VS REALMENTE QUEDO
+              </div>
+              
+              <div className="flex justify-between pt-0.5">
+                <span>TOTAL VENTAS SISTEMA:</span>
+                <span>${cut.totalGrossSales}.00</span>
               </div>
               <div className="flex justify-between">
-                <span>TOTAL VENTAS BRUTO:</span>
-                <span>${cut.totalGrossSales}.00</span>
+                <span>PAGO CON TARJETA:</span>
+                <span>${cut.totalCardSales}.00{cut.isCardManualOverride ? ' *' : ''}</span>
               </div>
               <div className="flex justify-between text-black">
                 <span>VENTAS EN EFECTIVO:</span>
                 <span>+${cut.totalCashSales}.00</span>
               </div>
               <div className="flex justify-between">
-                <span>VENTAS TARJETA:</span>
-                <span>${cut.totalCardSales}.00{cut.isCardManualOverride ? ' *' : ''}</span>
+                <span>(-) SALIDAS PAGADAS:</span>
+                <span>-${cut.totalOutflows}.00</span>
               </div>
-              
-              {(cut.totalBreadSales !== undefined || cut.totalNonBreadSales !== undefined) && (
-                <div className="my-1 pt-1 border-t border-dotted border-black text-[10.5px] space-y-0.5 bg-black/5 p-1 rounded">
-                  <div className="text-[10px] uppercase font-black">DESGLOSE PAN VS OTROS:</div>
-                  <div className="flex justify-between">
-                    <span>🍞 Venta de Pan ({cut.breadPieces || 0} pzs):</span>
-                    <span>${cut.totalBreadSales || 0}.00</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>🥛 Otros / No Pan ({cut.nonBreadPieces || 0} arts):</span>
-                    <span>${cut.totalNonBreadSales || 0}.00</span>
-                  </div>
-                  {cut.nonBreadItems && cut.nonBreadItems.length > 0 && (
-                    <div className="mt-1 pt-1 border-t border-dashed border-black/60 space-y-0.5">
-                      <div className="text-[9.5px] uppercase font-black tracking-wider text-black">
-                        DETALLE NO PAN (SOLO REGISTRADOS):
-                      </div>
-                      {cut.nonBreadItems.map((item, idx) => (
-                        <div key={idx} className="flex justify-between items-baseline text-[10px] pl-1 font-bold">
-                          <span className="truncate pr-1">• {item.name} ({item.quantity} pz):</span>
-                          <span className="font-mono font-black">${item.total}.00</span>
-                        </div>
-                      ))}
+              <div className="flex justify-between text-black/80 text-[10.5px]">
+                <span>(SE DEJAN EN CAJA CAMBIO):</span>
+                <span>${cut.nextShiftCash !== undefined ? cut.nextShiftCash : 1000}.00</span>
+              </div>
+
+              {/* SECCIÓN DESTACADA: CUADRE DE LA BOLSITA */}
+              <div className="mt-1.5 pt-1.5 border-t-2 border-black space-y-1 bg-black/5 p-1.5 rounded">
+                <div className="flex justify-between text-[11px]">
+                  <span>1. TENIA QUE PONERSE EN BOLSITA:</span>
+                  <span className="text-[12px] font-black">
+                    ${cut.expectedInBag !== undefined ? cut.expectedInBag : (cut.totalCashSales - cut.totalOutflows)}.00
+                  </span>
+                </div>
+
+                <div className="flex justify-between text-[11.5px]">
+                  <span>2. REALMENTE QUEDO (CONTADO):</span>
+                  <span className="text-[13px] font-black underline">
+                    ${cut.actualInBag !== undefined ? cut.actualInBag : (cut.actualCashInDrawer ?? cut.cashToDeliver ?? (cut.totalCashSales - cut.totalOutflows))}.00
+                  </span>
+                </div>
+
+                {(() => {
+                  const bagDiff = cut.bagDifference !== undefined ? cut.bagDifference : (cut.difference || 0);
+                  return (
+                    <div className="flex justify-between items-center text-[12px] pt-1 border-t border-black font-black">
+                      <span>3. CRUCE / DIFERENCIA:</span>
+                      <span className="text-[12.5px]">
+                        {bagDiff === 0 
+                          ? 'CUADRADA ($0.00)' 
+                          : bagDiff > 0 
+                            ? `+$${bagDiff}.00 (SOBRANTE)` 
+                            : `-$${Math.abs(bagDiff)}.00 (FALTANTE)`}
+                      </span>
                     </div>
-                  )}
+                  );
+                })()}
+              </div>
+
+              <div className="text-[9.5px] italic text-center pt-0.5 text-black/80">
+                (En el cajón se quedan ${cut.nextShiftCash !== undefined ? cut.nextShiftCash : 1000}.00 para cambio)
+              </div>
+            </div>
+
+            {/* 2. HASTA ABAJO: DESGLOSE DE LO VENDIDO */}
+            <div className="py-2 border-b-2 border-dashed border-black text-[11px] font-black space-y-1">
+              <div className="text-[11px] uppercase tracking-wide border-b border-black pb-0.5">
+                DESGLOSE DE LO VENDIDO:
+              </div>
+
+              <div className="flex justify-between">
+                <span>🍞 VENTA DE PAN ({cut.breadPieces || 0} pzs):</span>
+                <span>${cut.totalBreadSales !== undefined ? cut.totalBreadSales : cut.totalGrossSales}.00</span>
+              </div>
+              <div className="flex justify-between">
+                <span>🥛 NO PAN / ABARROTES ({cut.nonBreadPieces || 0} arts):</span>
+                <span>${cut.totalNonBreadSales || 0}.00</span>
+              </div>
+
+              {cut.nonBreadItems && cut.nonBreadItems.length > 0 && (
+                <div className="mt-1 pt-1 border-t border-dashed border-black/60 space-y-0.5 bg-black/5 p-1 rounded">
+                  <div className="text-[9.5px] uppercase font-black tracking-wider text-black">
+                    DETALLE ARTÍCULOS NO PAN:
+                  </div>
+                  {cut.nonBreadItems.map((item, idx) => (
+                    <div key={idx} className="flex justify-between items-baseline text-[10px] pl-1 font-bold">
+                      <span className="truncate pr-1">• {item.name} ({item.quantity} pz):</span>
+                      <span className="font-mono font-black">${item.total}.00</span>
+                    </div>
+                  ))}
                 </div>
               )}
 
-              <div className="flex justify-between">
-                <span>TOTAL PIEZAS:</span>
+              <div className="flex justify-between pt-1 border-t border-dotted border-black">
+                <span>TOTAL PIEZAS VENDIDAS:</span>
                 <span>{cut.totalPieces} pzs</span>
               </div>
               <div className="flex justify-between">
-                <span>TOTAL TICKETS:</span>
+                <span>TOTAL TICKETS COBRADOS:</span>
                 <span>{cut.ticketsCount} tickets</span>
               </div>
             </div>
 
-            {/* Outflows / Salidas Desglosadas Section */}
+            {/* 3. HASTA ABAJO: DETALLE DE SALIDAS */}
             <div className="py-2 border-b-2 border-dashed border-black text-[11px] font-black space-y-1">
               <div className="text-[11px] uppercase tracking-wide border-b border-black pb-0.5 flex justify-between">
-                <span>SALIDAS / PROVEEDORES:</span>
+                <span>DETALLE DE SALIDAS / PAGOS:</span>
                 <span>{cut.outflows?.length || 0}</span>
               </div>
 
               {(!cut.outflows || cut.outflows.length === 0) ? (
                 <div className="text-[10px] italic py-0.5 text-center">
-                  (Sin salidas de dinero registradas)
+                  (Sin salidas de dinero registradas en este turno)
                 </div>
               ) : (
                 cut.outflows.map((outflow, idx) => (
@@ -355,76 +413,23 @@ export const ThermalShiftCutTicket: React.FC<ThermalShiftCutTicketProps> = ({
               )}
 
               <div className="flex justify-between text-[11.5px] pt-1 border-t border-black font-black">
-                <span>TOTAL SALIDAS:</span>
+                <span>TOTAL SALIDAS REGISTRADAS:</span>
                 <span>-${cut.totalOutflows}.00</span>
               </div>
-            </div>
 
-            {/* Mathematical Final Cash Balance */}
-            <div className="py-2 border-b-2 border-dashed border-black text-[11px] font-black space-y-1">
-              <div className="text-[11px] uppercase tracking-wide border-b border-black pb-0.5">
-                BALANCE FINAL DE CAJA:
-              </div>
-              <div className="flex justify-between">
-                <span>(+) FONDO INICIAL RECIBIDO:</span>
-                <span>${cut.initialCash}.00</span>
-              </div>
-              <div className="flex justify-between">
-                <span>(+) EFECTIVO COBRADO:</span>
-                <span>+${cut.totalCashSales}.00</span>
-              </div>
-              <div className="flex justify-between">
-                <span>(-) TOTAL SALIDAS:</span>
-                <span>-${cut.totalOutflows}.00</span>
-              </div>
-              <div className="flex justify-between pt-1 border-t border-dotted border-black">
-                <span>(=) TOTAL EN CAJON:</span>
-                <span>${cut.expectedCashInDrawer}.00</span>
-              </div>
-              {(cut.nextShiftCash !== undefined && cut.nextShiftCash > 0) && (
-                <div className="flex justify-between">
-                  <span>(-) FONDO SIG. TURNO:</span>
-                  <span>-${cut.nextShiftCash}.00</span>
-                </div>
-              )}
-              <div className="flex justify-between items-center text-[13px] pt-1.5 border-t-2 border-black font-black">
-                <span>A ENTREGAR (NETO):</span>
-                <span className="text-[15px] font-black">
-                  ${cut.cashToDeliver !== undefined ? cut.cashToDeliver : Math.max(0, cut.expectedCashInDrawer - (cut.nextShiftCash || 0))}.00
-                </span>
-              </div>
-              {(cut.nextShiftCash !== undefined && cut.nextShiftCash > 0) && (
-                <div className="text-[9.5px] italic text-center text-black/80">
-                  (En caja se quedan ${cut.nextShiftCash}.00 para cambio sig. turno)
-                </div>
-              )}
-
-              {cut.actualCashInDrawer !== undefined && (
-                <div className="pt-1 text-[10.5px] border-t border-dashed border-black/60 space-y-0.5">
-                  <div className="flex justify-between">
-                    <span>EFECTIVO CONTADO FISICO:</span>
-                    <span>${cut.actualCashInDrawer}.00</span>
+              {cut.nextShiftBillsBreakdown && Object.values(cut.nextShiftBillsBreakdown).some(v => Number(v) > 0) && (
+                <div className="pt-1 mt-1 border-t border-dotted border-black/40 text-[9.5px]">
+                  <span className="block font-black uppercase text-[9px]">BILLETES CAMBIO EN CAJA:</span>
+                  <div className="grid grid-cols-2 gap-x-2">
+                    {Object.entries(cut.nextShiftBillsBreakdown)
+                      .filter(([_, count]) => Number(count) > 0)
+                      .map(([denom, count]) => (
+                        <div key={denom} className="flex justify-between">
+                          <span>• {count} x ${denom}:</span>
+                          <span>${Number(denom) * Number(count)}</span>
+                        </div>
+                      ))}
                   </div>
-                  <div className="flex justify-between">
-                    <span>EFECTIVO SEGUN SISTEMA:</span>
-                    <span>${cut.expectedCashInDrawer}.00</span>
-                  </div>
-                  <div className="flex justify-between font-black">
-                    <span>CUADRE / DIFERENCIA:</span>
-                    <span>
-                      {cut.difference === 0 
-                        ? 'CUADRADA EXACTA ($0.00)' 
-                        : (cut.difference && cut.difference > 0)
-                          ? `+$${cut.difference}.00 (SOBRANTE)`
-                          : `-$${Math.abs(cut.difference || (cut.actualCashInDrawer - cut.expectedCashInDrawer))}.00 (FALTANTE)`}
-                    </span>
-                  </div>
-                  {(cut.nextShiftCash !== undefined && cut.nextShiftCash > 0) && (
-                    <div className="flex justify-between">
-                      <span>CORTE COLOCADO EN BOLSITA:</span>
-                      <span>${Math.max(0, cut.actualCashInDrawer - cut.nextShiftCash)}.00</span>
-                    </div>
-                  )}
                 </div>
               )}
             </div>

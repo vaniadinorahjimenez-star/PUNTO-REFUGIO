@@ -980,70 +980,70 @@ export function saveShiftCuts(cuts: ShiftCutRecord[], forceOverwrite: boolean = 
 // Generate formatted WhatsApp message for Shift Cut
 export function generateShiftCutWhatsAppMessage(cut: ShiftCutRecord, settings: Settings): string {
   const outflowsText = cut.outflows && cut.outflows.length > 0
-    ? cut.outflows.map(o => `  • ${o.concept}: -$${o.amount}.00 (${o.time})`).join('\n')
+    ? cut.outflows.map(o => `  • ${o.concept}: -$${o.amount}.00 (${o.time || ''})`).join('\n')
     : '  (Sin salidas registradas)';
+
+  const expectedBag = cut.expectedInBag !== undefined 
+    ? cut.expectedInBag 
+    : (cut.totalCashSales - cut.totalOutflows);
+  const actualBag = cut.actualInBag !== undefined 
+    ? cut.actualInBag 
+    : (cut.actualCashInDrawer ?? cut.cashToDeliver ?? expectedBag);
+  const bagDiff = cut.bagDifference !== undefined 
+    ? cut.bagDifference 
+    : (cut.difference || (actualBag - expectedBag));
 
   let text = `🥖 *${settings.bakeryName}* 🥖\n`;
   text += `📊 *CORTE DE CAJA / TURNO:* ${cut.folio}\n`;
   text += `👤 *Cajero(a):* ${cut.cashierName}\n`;
   text += `🕒 *Turno:* ${cut.shiftName}\n`;
   text += `📅 *Fecha:* ${cut.date} | *Hora:* ${cut.time}\n`;
+  text += `================================\n`;
+  text += `💰 *CRUCE DE BOLSITA (TENÍA QUE PONERSE VS REALMENTE QUEDÓ):*\n`;
+  text += `• Total Ventas Sistema: *$${cut.totalGrossSales}.00*\n`;
+  text += `• Pago con Tarjeta: $${cut.totalCardSales}.00${cut.isCardManualOverride ? ' (Manual)' : ''}\n`;
+  text += `• Ventas en Efectivo: +$${cut.totalCashSales}.00\n`;
+  text += `• (-) Salidas Pagadas: -$${cut.totalOutflows}.00\n`;
+  text += `• Fondo Cambio en Caja: $${cut.nextShiftCash !== undefined ? cut.nextShiftCash : 1000}.00\n`;
   text += `--------------------------------\n`;
-  text += `*RESUMEN DE VENTAS:*\n`;
-  text += `• Total Bruto de Ventas: *$${cut.totalGrossSales}.00*\n`;
-  text += `• Ventas en Efectivo: $${cut.totalCashSales}.00\n`;
-  text += `• Ventas con Tarjeta: $${cut.totalCardSales}.00${cut.isCardManualOverride ? ' (Manual)' : ''}\n`;
-  if (cut.totalBreadSales !== undefined || cut.totalNonBreadSales !== undefined) {
-    text += `--------------------------------\n`;
-    text += `*DESGLOSE PAN VS OTROS:*\n`;
-    text += `🥖 *Venta de Pan:* $${cut.totalBreadSales || 0}.00 (${cut.breadPieces || 0} pzs)\n`;
-    text += `🥛 *Venta de Otros (No Pan):* $${cut.totalNonBreadSales || 0}.00 (${cut.nonBreadPieces || 0} arts)\n`;
-    if (cut.nonBreadItems && cut.nonBreadItems.length > 0) {
-      text += `*Artículos No Pan Vendidos:*\n`;
-      cut.nonBreadItems.forEach(item => {
-        text += `  • ${item.name} (${item.quantity} pz): $${item.total}.00\n`;
-      });
-    }
+  text += `📦 *1. Tenía que ponerse en bolsita:* $${expectedBag}.00\n`;
+  text += `💵 *2. Realmente quedó (contado):* $${actualBag}.00\n`;
+  if (bagDiff === 0) {
+    text += `⚖️ *3. Cruce / Diferencia bolsita:* ✅ CUADRADA ($0.00)\n`;
+  } else if (bagDiff > 0) {
+    text += `⚖️ *3. Cruce / Diferencia bolsita:* 🟢 SOBRANTE: +$${bagDiff}.00\n`;
+  } else {
+    text += `⚖️ *3. Cruce / Diferencia bolsita:* 🔴 FALTANTE: -$${Math.abs(bagDiff)}.00\n`;
   }
-  text += `• Total Piezas: ${cut.totalPieces} pzs\n`;
-  text += `• Total de Tickets: ${cut.ticketsCount} tickets\n`;
+  text += `👉 *TOTAL A ENTREGAR EN BOLSITA: $${actualBag}.00*\n`;
+  text += `ℹ️ _(Quedan $${cut.nextShiftCash !== undefined ? cut.nextShiftCash : 1000}.00 en el cajón para cambio)_\n`;
+  text += `================================\n`;
+  text += `🍞 *DESGLOSE DE LO VENDIDO:*\n`;
+  text += `• Venta de Pan: $${cut.totalBreadSales !== undefined ? cut.totalBreadSales : cut.totalGrossSales}.00 (${cut.breadPieces || 0} pzs)\n`;
+  text += `• No Pan / Otros: $${cut.totalNonBreadSales || 0}.00 (${cut.nonBreadPieces || 0} arts)\n`;
+  if (cut.nonBreadItems && cut.nonBreadItems.length > 0) {
+    cut.nonBreadItems.forEach(item => {
+      text += `    • ${item.name} (${item.quantity} pz): $${item.total}.00\n`;
+    });
+  }
+  text += `• Total Piezas: ${cut.totalPieces} pzs | Tickets: ${cut.ticketsCount}\n`;
   text += `--------------------------------\n`;
-  text += `*SALIDAS / PAGOS A PROVEEDORES:*\n`;
+  text += `📤 *DETALLE DE SALIDAS / PAGOS:*\n`;
   text += `${outflowsText}\n`;
-  const finalDeliver = cut.cashToDeliver !== undefined
-    ? cut.cashToDeliver
-    : (cut.nextShiftCash ? Math.max(0, cut.expectedCashInDrawer - cut.nextShiftCash) : cut.expectedCashInDrawer);
-
   text += `• Total Salidas: *-$${cut.totalOutflows}.00*\n`;
-  text += `--------------------------------\n`;
-  text += `*BALANCE DE CAJA:*\n`;
-  text += `(+) Fondo Inicial: $${cut.initialCash}.00\n`;
-  text += `(+) Efectivo Cobrado: $${cut.totalCashSales}.00\n`;
-  text += `(-) Salidas Proveedores: -$${cut.totalOutflows}.00\n`;
-  text += `(=) Total en Cajón: $${cut.expectedCashInDrawer}.00\n`;
-  if (cut.nextShiftCash !== undefined && cut.nextShiftCash > 0) {
-    text += `(-) Se Deja para Sig. Turno: -$${cut.nextShiftCash}.00\n`;
+
+  if (cut.nextShiftBillsBreakdown && Object.values(cut.nextShiftBillsBreakdown).some(v => Number(v) > 0)) {
+    text += `--------------------------------\n`;
+    text += `💵 *Billetes Cambio en Caja:*\n`;
+    Object.entries(cut.nextShiftBillsBreakdown)
+      .filter(([_, count]) => Number(count) > 0)
+      .forEach(([denom, count]) => {
+        text += `  • ${count} x $${denom} = $${Number(denom) * Number(count)}.00\n`;
+      });
   }
-  text += `👉 *EFECTIVO NETO A ENTREGAR: $${finalDeliver}.00*\n`;
-  if (cut.nextShiftCash !== undefined && cut.nextShiftCash > 0) {
-    text += `ℹ️ _(Quedan $${cut.nextShiftCash}.00 en caja para cambio del sig. turno)_\n`;
-  }
-  if (cut.actualCashInDrawer !== undefined) {
-    text += `💵 Efectivo Físico Contado: $${cut.actualCashInDrawer}.00\n`;
-    text += `💻 Efectivo según Sistema: $${cut.expectedCashInDrawer}.00\n`;
-    const diff = cut.difference !== undefined ? cut.difference : (cut.actualCashInDrawer - cut.expectedCashInDrawer);
-    if (diff === 0) {
-      text += `⚖️ Cuadre de Caja: ✅ CAJA CUADRADA EXACTA ($0.00)\n`;
-    } else if (diff > 0) {
-      text += `⚖️ Cuadre de Caja: 🟢 SOBRANTE EN CAJA: +$${diff}.00\n`;
-    } else {
-      text += `⚖️ Cuadre de Caja: 🔴 FALTANTE EN CAJA: -$${Math.abs(diff)}.00\n`;
-    }
-    if (cut.nextShiftCash !== undefined && cut.nextShiftCash > 0) {
-      text += `💰 Efectivo Real a Entregar al Patrón: $${Math.max(0, cut.actualCashInDrawer - cut.nextShiftCash)}.00\n`;
-    }
-  }
+
   if (cut.notes) {
+    text += `--------------------------------\n`;
     text += `📝 Observaciones: ${cut.notes}\n`;
   }
   text += `\n_${settings.ticketFooter}_`;

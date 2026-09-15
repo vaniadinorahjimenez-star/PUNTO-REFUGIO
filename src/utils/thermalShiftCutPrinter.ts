@@ -31,18 +31,53 @@ export function buildShiftCutEscPosBytes(cut: ShiftCutRecord, settings: Settings
     .twoColumns(`FECHA: ${cut.date}`, `CAJA: 1`, width)
     .line(`CAJERO(A): ${cut.cashierName}`)
     .line(`TURNO: ${cut.shiftName}`)
-    .separator(width, '-')
+    .separator(width, '=')
     .bold(true)
-    .line('RESUMEN DE VENTAS:')
+    .line('CRUCE DE BOLSITA (TENIA VS REAL):')
     .separator(width, '-')
-    .twoColumns('VENTAS BRUTO:', `$${cut.totalGrossSales}.00`, width)
-    .twoColumns('VENTAS EN EFECTIVO:', `$${cut.totalCashSales}.00`, width)
-    .twoColumns('VENTAS CON TARJETA:', `$${cut.totalCardSales}.00${cut.isCardManualOverride ? ' *' : ''}`, width);
+    .twoColumns('VENTAS SISTEMA:', `$${cut.totalGrossSales}.00`, width)
+    .twoColumns('PAGO CON TARJETA:', `$${cut.totalCardSales}.00${cut.isCardManualOverride ? ' *' : ''}`, width)
+    .twoColumns('VENTAS EFECTIVO:', `+$${cut.totalCashSales}.00`, width)
+    .twoColumns('(-) SALIDAS PAGADAS:', `-$${cut.totalOutflows}.00`, width)
+    .twoColumns('(SE DEJAN EN CAJA):', `$${cut.nextShiftCash !== undefined ? cut.nextShiftCash : 1000}.00`, width)
+    .separator(width, '-');
+
+  const expectedBag = cut.expectedInBag !== undefined 
+    ? cut.expectedInBag 
+    : (cut.totalCashSales - cut.totalOutflows);
+  const actualBag = cut.actualInBag !== undefined 
+    ? cut.actualInBag 
+    : (cut.actualCashInDrawer ?? cut.cashToDeliver ?? expectedBag);
+  const bagDiff = cut.bagDifference !== undefined 
+    ? cut.bagDifference 
+    : (cut.difference || (actualBag - expectedBag));
+
+  encoder
+    .twoColumns('1. TENIA QUE PONERSE:', `$${expectedBag}.00`, width)
+    .twoColumns('2. REALMENTE QUEDO:', `$${actualBag}.00`, width);
+
+  if (bagDiff === 0) {
+    encoder.twoColumns('3. CRUCE / DIFERENCIA:', 'CUADRADA ($0.00)', width);
+  } else if (bagDiff > 0) {
+    encoder.twoColumns('3. CRUCE / DIFERENCIA:', `+$${bagDiff}.00 (SOBRANTE)`, width);
+  } else {
+    encoder.twoColumns('3. CRUCE / DIFERENCIA:', `-$${Math.abs(bagDiff)}.00 (FALTANTE)`, width);
+  }
+
+  encoder
+    .separator(width, '=')
+    .bold(true)
+    .size('large')
+    .twoColumns('A ENTREGAR EN BOLSITA:', `$${actualBag}.00`, width)
+    .size('normal')
+    .bold(true)
+    .line(`(Quedan $${cut.nextShiftCash !== undefined ? cut.nextShiftCash : 1000}.00 en caja de cambio)`)
+    .separator(width, '=')
+    .line('DESGLOSE DE LO VENDIDO:')
+    .separator(width, '-');
 
   if (cut.totalBreadSales !== undefined || cut.totalNonBreadSales !== undefined) {
     encoder
-      .separator(width, '.')
-      .line('DESGLOSE PAN VS OTROS:')
       .twoColumns('VENTA DE PAN:', `$${cut.totalBreadSales || 0}.00 (${cut.breadPieces || 0} pz)`, width)
       .twoColumns('OTROS (NO PAN):', `$${cut.totalNonBreadSales || 0}.00 (${cut.nonBreadPieces || 0} art)`, width);
 
@@ -61,7 +96,7 @@ export function buildShiftCutEscPosBytes(cut: ShiftCutRecord, settings: Settings
     .twoColumns('TICKETS COBRADOS:', `${cut.ticketsCount}`, width)
     .separator(width, '-')
     .bold(true)
-    .line('SALIDAS / PAGOS PROVEEDOR:')
+    .line('DETALLE DE SALIDAS / PAGOS:')
     .separator(width, '-');
 
   // Detalle de salidas desglosadas
@@ -87,46 +122,15 @@ export function buildShiftCutEscPosBytes(cut: ShiftCutRecord, settings: Settings
   encoder
     .separator(width, '-')
     .bold(true)
-    .twoColumns('TOTAL SALIDAS:', `-$${cut.totalOutflows}.00`, width)
-    .separator(width, '=')
-    .bold(true)
-    .line('BALANCE FINAL DE CAJA:')
-    .separator(width, '-')
-    .twoColumns('(+) FONDO INICIAL:', `$${cut.initialCash}.00`, width)
-    .twoColumns('(+) EFECTIVO COBRADO:', `+$${cut.totalCashSales}.00`, width)
-    .twoColumns('(-) TOTAL SALIDAS:', `-$${cut.totalOutflows}.00`, width)
-    .separator(width, '-')
-    .twoColumns('(=) TOTAL EN CAJON:', `$${cut.expectedCashInDrawer}.00`, width);
+    .twoColumns('TOTAL SALIDAS:', `-$${cut.totalOutflows}.00`, width);
 
-  if (cut.nextShiftCash !== undefined && cut.nextShiftCash > 0) {
-    encoder.twoColumns('(-) FONDO SIG. TURNO:', `-$${cut.nextShiftCash}.00`, width);
-  }
-
-  const deliverCashEscPos = cut.cashToDeliver !== undefined 
-    ? cut.cashToDeliver 
-    : (cut.nextShiftCash ? Math.max(0, cut.expectedCashInDrawer - cut.nextShiftCash) : cut.expectedCashInDrawer);
-
-  encoder
-    .separator(width, '=')
-    .bold(true)
-    .size('large')
-    .twoColumns('A ENTREGAR:', `$${deliverCashEscPos}.00`, width)
-    .size('normal')
-    .bold(true);
-
-  if (cut.nextShiftCash !== undefined && cut.nextShiftCash > 0) {
-    encoder.line(`(Quedan $${cut.nextShiftCash}.00 en caja para sig. turno)`);
-  }
-
-  if (cut.actualCashInDrawer !== undefined) {
-    encoder.twoColumns('EFECTIVO CONTADO:', `$${cut.actualCashInDrawer}.00`, width);
-    if (cut.nextShiftCash !== undefined && cut.nextShiftCash > 0) {
-      encoder.twoColumns('CORTE EN BOLSITA:', `$${Math.max(0, cut.actualCashInDrawer - cut.nextShiftCash)}.00`, width);
-    }
-    if (cut.difference !== undefined && cut.difference !== 0) {
-      const diffLabel = cut.difference > 0 ? 'SOBRANTE:' : 'FALTANTE:';
-      encoder.twoColumns(diffLabel, `$${Math.abs(cut.difference)}.00`, width);
-    }
+  if (cut.nextShiftBillsBreakdown && Object.values(cut.nextShiftBillsBreakdown).some(v => v > 0)) {
+    encoder.separator(width, '-').line('BILLETES CAMBIO EN CAJA:');
+    Object.entries(cut.nextShiftBillsBreakdown)
+      .filter(([_, count]) => (count || 0) > 0)
+      .forEach(([denom, count]) => {
+        encoder.twoColumns(`  ${count} x $${denom}`, `$${Number(denom) * count}.00`, width);
+      });
   }
 
   if (cut.notes) {
@@ -238,82 +242,87 @@ export function printShiftCutDirectToPrinter(cut: ShiftCutRecord, settings: Sett
         <div class="row"><span>CAJERO(A):</span><span>${cut.cashierName}</span></div>
         <div class="row"><span>TURNO:</span><span>${cut.shiftName}</span></div>
 
-        <div class="divider"></div>
-        <div style="font-size: 11px; font-weight: 900; text-transform: uppercase;">RESUMEN DE VENTAS:</div>
+        <div class="double-divider"></div>
+        <div style="font-size: 11px; font-weight: 900; text-transform: uppercase; text-align: center;">CALCULO DE BOLSITA / ENTREGA:</div>
         <div class="divider"></div>
 
-        <div class="row"><span>VENTAS BRUTO:</span><span>$${cut.totalGrossSales}.00</span></div>
-        <div class="row"><span>VENTAS EFECTIVO:</span><span>$${cut.totalCashSales}.00</span></div>
-        <div class="row"><span>VENTAS TARJETA:</span><span>$${cut.totalCardSales}.00${cut.isCardManualOverride ? ' *' : ''}</span></div>
-        
-        ${(cut.totalBreadSales !== undefined || cut.totalNonBreadSales !== undefined) ? `
-          <div style="border-top: 1px dotted #000; border-bottom: 1px dotted #000; padding: 2px 0; margin: 3px 0; font-size: 10.5px;">
-            <div style="font-weight: 900; font-size: 10px;">DESGLOSE PAN VS OTROS:</div>
-            <div class="row"><span>🍞 Venta de Pan (${cut.breadPieces || 0} pz):</span><span>$${cut.totalBreadSales || 0}.00</span></div>
-            <div class="row"><span>🥛 Otros / No Pan (${cut.nonBreadPieces || 0} art):</span><span>$${cut.totalNonBreadSales || 0}.00</span></div>
-            ${cut.nonBreadItems && cut.nonBreadItems.length > 0 ? `
-              <div style="font-weight: 900; font-size: 9.5px; margin-top: 2px; border-top: 1px dashed #000; padding-top: 2px;">
-                DETALLE NO PAN (SOLO REGISTRADOS):
+        <div class="row"><span>VENTAS SISTEMA:</span><span>$${cut.totalGrossSales}.00</span></div>
+        <div class="row"><span>PAGO CON TARJETA:</span><span>$${cut.totalCardSales}.00${cut.isCardManualOverride ? ' *' : ''}</span></div>
+        <div class="row"><span>VENTAS EFECTIVO:</span><span>+$${cut.totalCashSales}.00</span></div>
+        <div class="row"><span>(-) SALIDAS PAGADAS:</span><span>-$${cut.totalOutflows}.00</span></div>
+        <div class="row" style="font-size: 10px;"><span>(SE DEJAN EN CAJA):</span><span>$${cut.nextShiftCash !== undefined ? cut.nextShiftCash : 1000}.00</span></div>
+
+        <div class="divider"></div>
+        <div class="row" style="font-weight: 900;">
+          <span>TENIA QUE PONERSE EN BOLSITA:</span>
+          <span>$${cut.expectedInBag !== undefined ? cut.expectedInBag : (cut.totalCashSales - cut.totalOutflows)}.00</span>
+        </div>
+        <div class="row" style="font-weight: 900; font-size: 12px;">
+          <span>REALMENTE QUEDO (CONTADO):</span>
+          <span>$${cut.actualInBag !== undefined ? cut.actualInBag : (cut.actualCashInDrawer ?? cut.cashToDeliver ?? (cut.totalCashSales - cut.totalOutflows))}.00</span>
+        </div>
+
+        ${(() => {
+          const bagDiff = cut.bagDifference !== undefined ? cut.bagDifference : (cut.difference || 0);
+          return `
+            <div class="row" style="font-weight: 900; border-top: 1px dashed #000; padding-top: 3px; margin-top: 2px;">
+              <span>DIFERENCIA EN BOLSITA:</span>
+              <span>${bagDiff === 0 ? 'CUADRADA ($0.00)' : (bagDiff > 0 ? `+$${bagDiff}.00 (SOBRANTE)` : `-$${Math.abs(bagDiff)}.00 (FALTANTE)`)}</span>
+            </div>
+          `;
+        })()}
+
+        <div class="double-divider"></div>
+        <div class="row total-row">
+          <span>A ENTREGAR EN BOLSITA:</span>
+          <span>$${cut.actualInBag !== undefined ? cut.actualInBag : (cut.cashToDeliver !== undefined ? cut.cashToDeliver : Math.max(0, cut.expectedCashInDrawer - (cut.nextShiftCash || 0)))}.00</span>
+        </div>
+        <div style="font-size: 9.5px; text-align: center; margin-top: 2px;">
+          (Se quedan $${cut.nextShiftCash !== undefined ? cut.nextShiftCash : 1000}.00 en caja para cambio sig. turno)
+        </div>
+
+        <div class="double-divider"></div>
+        <div style="font-size: 11px; font-weight: 900; text-transform: uppercase;">DESGLOSE DE LO VENDIDO:</div>
+        <div class="divider"></div>
+
+        <div class="row"><span>🍞 Venta de Pan (${cut.breadPieces || 0} pz):</span><span>$${cut.totalBreadSales !== undefined ? cut.totalBreadSales : cut.totalGrossSales}.00</span></div>
+        <div class="row"><span>🥛 Otros / No Pan (${cut.nonBreadPieces || 0} art):</span><span>$${cut.totalNonBreadSales || 0}.00</span></div>
+
+        ${cut.nonBreadItems && cut.nonBreadItems.length > 0 ? `
+          <div style="border-top: 1px dotted #000; padding-top: 2px; margin: 3px 0; font-size: 9.5px;">
+            <div style="font-weight: 900;">DETALLE NO PAN (REGISTRADOS):</div>
+            ${cut.nonBreadItems.map(item => `
+              <div class="row" style="font-size: 9.5px; padding-left: 4px;">
+                <span>• ${item.name} (${item.quantity} pz):</span>
+                <span>$${item.total}.00</span>
               </div>
-              ${cut.nonBreadItems.map(item => `
-                <div class="row" style="font-size: 9.5px; padding-left: 4px;">
-                  <span>• ${item.name} (${item.quantity} pz):</span>
-                  <span>$${item.total}.00</span>
-                </div>
-              `).join('')}
-            ` : ''}
+            `).join('')}
           </div>
         ` : ''}
 
-        <div class="row"><span>TOTAL PIEZAS:</span><span>${cut.totalPieces} pzs</span></div>
+        <div class="row" style="border-top: 1px dotted #000; padding-top: 2px;"><span>TOTAL PIEZAS:</span><span>${cut.totalPieces} pzs</span></div>
         <div class="row"><span>TICKETS COBRADOS:</span><span>${cut.ticketsCount}</span></div>
 
-        <div class="divider"></div>
-        <div style="font-size: 11px; font-weight: 900; text-transform: uppercase;">SALIDAS / PAGOS:</div>
+        <div class="double-divider"></div>
+        <div style="font-size: 11px; font-weight: 900; text-transform: uppercase;">DETALLE DE SALIDAS / PAGOS:</div>
         <div class="divider"></div>
 
         ${outflowsHtml}
 
         <div class="divider"></div>
-        <div class="row"><span>TOTAL SALIDAS:</span><span>-$${cut.totalOutflows}.00</span></div>
+        <div class="row" style="font-weight: 900;"><span>TOTAL SALIDAS:</span><span>-$${cut.totalOutflows}.00</span></div>
 
-        <div class="double-divider"></div>
-        <div style="font-size: 11px; font-weight: 900; text-transform: uppercase;">BALANCE FINAL DE CAJA:</div>
-        <div class="divider"></div>
-
-        <div class="row"><span>(+) FONDO INICIAL:</span><span>$${cut.initialCash}.00</span></div>
-        <div class="row"><span>(+) EFECTIVO COBRADO:</span><span>+$${cut.totalCashSales}.00</span></div>
-        <div class="row"><span>(-) TOTAL SALIDAS:</span><span>-$${cut.totalOutflows}.00</span></div>
-        <div class="row" style="border-top: 1px dotted #000; padding-top: 2px;">
-          <span>(=) TOTAL EN CAJÓN:</span><span>$${cut.expectedCashInDrawer}.00</span>
-        </div>
-        ${(cut.nextShiftCash !== undefined && cut.nextShiftCash > 0) ? `
-          <div class="row"><span>(-) FONDO SIG. TURNO:</span><span>-$${cut.nextShiftCash}.00</span></div>
-        ` : ''}
-
-        <div class="double-divider"></div>
-        <div class="row total-row">
-          <span>A ENTREGAR:</span>
-          <span>$${cut.cashToDeliver !== undefined ? cut.cashToDeliver : (cut.nextShiftCash ? Math.max(0, cut.expectedCashInDrawer - cut.nextShiftCash) : cut.expectedCashInDrawer)}.00</span>
-        </div>
-        ${(cut.nextShiftCash !== undefined && cut.nextShiftCash > 0) ? `
-          <div style="font-size: 9.5px; text-align: center; margin-top: 2px;">
-            (Se quedan $${cut.nextShiftCash}.00 en caja para sig. turno)
-          </div>
-        ` : ''}
-        <div class="double-divider"></div>
-
-        ${cut.actualCashInDrawer !== undefined ? `
-          <div class="row"><span>EFECTIVO CONTADO:</span><span>$${cut.actualCashInDrawer}.00</span></div>
-          ${(cut.nextShiftCash !== undefined && cut.nextShiftCash > 0) ? `
-            <div class="row"><span>CORTE EN BOLSITA:</span><span>$${Math.max(0, cut.actualCashInDrawer - cut.nextShiftCash)}.00</span></div>
-          ` : ''}
-          ${cut.difference !== undefined && cut.difference !== 0 ? `
-            <div class="row">
-              <span>${cut.difference > 0 ? 'SOBRANTE:' : 'FALTANTE:'}</span>
-              <span>$${Math.abs(cut.difference)}.00</span>
-            </div>
-          ` : ''}
+        ${cut.nextShiftBillsBreakdown && Object.values(cut.nextShiftBillsBreakdown).some(v => Number(v) > 0) ? `
+          <div class="divider"></div>
+          <div style="font-size: 10px; font-weight: 900;">BILLETES CAMBIO EN CAJA:</div>
+          ${Object.entries(cut.nextShiftBillsBreakdown)
+            .filter(([_, count]) => Number(count) > 0)
+            .map(([denom, count]) => `
+              <div class="row" style="font-size: 9.5px;">
+                <span>• ${count} x $${denom}:</span>
+                <span>$${Number(denom) * Number(count)}.00</span>
+              </div>
+            `).join('')}
         ` : ''}
 
         ${cut.notes ? `<div style="font-size: 10px; margin: 4px 0;">NOTA: ${cut.notes}</div>` : ''}

@@ -10,22 +10,21 @@ import {
   Calendar, 
   Plus, 
   Trash2, 
-  TrendingDown, 
   Coins, 
   Banknote, 
   Receipt, 
   Sparkles, 
   AlertCircle,
-  FileSpreadsheet,
-  Check,
-  Calculator,
-  Eye,
+  Check, 
+  Eye, 
+  CreditCard, 
+  Wheat, 
+  RotateCcw,
+  Package,
+  ShoppingBag,
+  TrendingDown,
   ArrowDownCircle,
-  Building2,
-  CreditCard,
-  Wheat,
-  Coffee,
-  RotateCcw
+  HelpCircle
 } from 'lucide-react';
 import { SaleTicket, Settings, CashOutflowItem, ShiftCutRecord } from '../../types';
 import { 
@@ -41,6 +40,7 @@ import {
 } from '../../utils/storage';
 import { playBeep, playCashSound, playCelebrationFanfare } from '../../utils/audio';
 import { ThermalShiftCutTicket } from './ThermalShiftCutTicket';
+import { CashDenominationSelector, calculateDenominationsTotal } from './CashDenominationSelector';
 import { calculateTicketsBreakdown } from '../../utils/productClassification';
 
 interface CashShiftCutModalProps {
@@ -49,149 +49,100 @@ interface CashShiftCutModalProps {
   tickets: SaleTicket[];
   settings: Settings;
   onCutSaved?: (cut: ShiftCutRecord) => void;
+  initialCashDefault?: number;
 }
 
 const CASHIER_PRESETS = ['Mary', 'Paty', 'Jaz', 'Natty', 'Jonathan'];
 
-const COMMON_EXPENSE_PRESETS = [
-  { label: '🚗 Uber / Transporte', concept: 'Uber / Transporte' },
-  { label: '💸 Préstamos', concept: 'Préstamos' },
-  { label: '🥛 Alpura', concept: 'Alpura' },
-  { label: '🥤 Coca cola', concept: 'Coca cola' },
-  { label: '🔧 Mantenimientos', concept: 'Mantenimientos' },
-  { label: '🐷 Ahorro', concept: 'Ahorro' },
-  { label: '🥪 Desayuno', concept: 'Desayuno' },
-  { label: '📦 Otros', concept: 'Otros' },
-  { label: '🌾 Harinera', concept: 'Pago Harina / Harinera' },
-  { label: '🔥 Gas L.P.', concept: 'Pago Gas L.P.' },
-  { label: '🥚 Proveedor Huevo', concept: 'Pago Proveedor Huevo' },
-  { label: '🛍️ Bolsas y Domos', concept: 'Bolsas y Domos' }
+const OUTFLOW_CONCEPT_PRESETS = [
+  'Uber / Transporte',
+  'Préstamo Empleado',
+  'Alpura / Lácteos',
+  'Coca-Cola / Refrescos',
+  'Harinera / Costales',
+  'Huevo',
+  'Mantenimiento / Reparación',
+  'Gas L.P.',
+  'Bolsas / Domos / Empaque',
+  'Ahorro / Fondo',
+  'Desayuno / Comida Personal',
+  'Otro Pago Proveedor'
 ];
+
+// Helper to eliminate any leading zero so typing '100' does not show '0100'
+const cleanAmountInput = (val: string): string => {
+  if (!val) return '';
+  // Keep only digits
+  const onlyDigits = val.replace(/[^0-9]/g, '');
+  if (!onlyDigits) return '';
+  // Strip leading zeroes so '0100' becomes '100', '05' becomes '5', but keep a solitary '0' if entered
+  return onlyDigits.replace(/^0+(?=\d)/, '');
+};
 
 export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
   isOpen,
   onClose,
   tickets,
   settings,
-  onCutSaved
+  onCutSaved,
+  initialCashDefault = 1000
 }) => {
-  // Current Date and Automatic Real-Time Clock
   const todayStr = getTodayString();
   const [autoTime, setAutoTime] = useState<string>(getNowTimeString());
   const [autoDateFormatted, setAutoDateFormatted] = useState<string>('');
 
-  // Cashier / Person Name (persisted in localStorage or default to Mary)
+  // Cashier Name State
   const [cashierName, setCashierName] = useState<string>(() => {
-    const saved = localStorage.getItem('santafe_last_cashier_name');
-    if (saved && CASHIER_PRESETS.includes(saved)) return saved;
-    // Si estaba guardado algún cajero anterior ya eliminado, reiniciar a Mary
-    if (saved && ['Maggie', 'Angy', 'Amari', 'Gabo'].includes(saved)) return 'Mary';
-    if (saved && saved.trim()) return saved;
-    return 'Mary';
+    return localStorage.getItem('santafe_last_cashier_name') || 'Mary';
   });
 
-  // Shift Name (Prioridad: lee el turno activo en mostrador, o detecta por horario: antes de 15:00 = Turno 1, >= 15:00 = Turno 2)
+  // Shift selection state
   const [shiftType, setShiftType] = useState<string>(() => {
-    const active = localStorage.getItem('santafe_active_shift');
-    if (active === 'turno1') return 'Turno 1 (Mañana 07:00 a 15:00)';
-    if (active === 'turno2') return 'Turno 2 (Tarde 15:00 a 22:00)';
     const hour = new Date().getHours();
-    return hour < 15 ? 'Turno 1 (Mañana 07:00 a 15:00)' : 'Turno 2 (Tarde 15:00 a 22:00)';
+    return hour < 15 
+      ? 'Turno 1 (Mañana 07:00 a 15:00)' 
+      : 'Turno 2 (Tarde 15:00 a 22:00)';
   });
 
-  // Initial Drawer Cash (Fondo inicial de caja) - Default 1000 editable con persistencia
+  // Fondo Inicial Recibido (por defecto $1,000)
   const [initialCash, setInitialCash] = useState<number>(() => {
-    const saved = localStorage.getItem('santafe_initial_cash_pref');
-    if (saved) {
-      const parsed = parseFloat(saved);
-      if (!isNaN(parsed) && parsed >= 0) return parsed;
-    }
-    return 1000;
+    const saved = localStorage.getItem('santafe_initial_cash_amount');
+    return saved ? Number(saved) : initialCashDefault;
   });
 
-  const handleUpdateInitialCash = (newVal: number) => {
-    const safe = Math.max(0, newVal);
-    setInitialCash(safe);
-    localStorage.setItem('santafe_initial_cash_pref', safe.toString());
-  };
+  // 1. PASO 1: Pago con Tarjeta
+  const [manualCardInput, setManualCardInput] = useState<string>('');
+  const [hasInitializedInputs, setHasInitializedInputs] = useState<boolean>(false);
 
-  // Fondo que se deja en caja para el siguiente turno - Default 1000 editable con persistencia
+  // 2. PASO 2: Se Dejan 1000 en Caja (con Conteo Fácil)
   const [nextShiftCash, setNextShiftCash] = useState<number>(() => {
-    const saved = localStorage.getItem('santafe_next_shift_cash_pref');
-    if (saved) {
-      const parsed = parseFloat(saved);
-      if (!isNaN(parsed) && parsed >= 0) return parsed;
-    }
-    return 1000;
+    const saved = localStorage.getItem('santafe_next_shift_cash_amount');
+    return saved !== null ? Number(saved) : 1000;
+  });
+  const [showNextShiftCounter, setShowNextShiftCounter] = useState<boolean>(false);
+  const [nextShiftDenominations, setNextShiftDenominations] = useState<{ [denom: number]: number }>({
+    500: 2, 200: 0, 100: 0, 50: 0, 20: 0, 10: 0, 5: 0, 2: 0, 1: 0
   });
 
-  const handleUpdateNextShiftCash = (newVal: number) => {
-    const safe = Math.max(0, newVal);
-    setNextShiftCash(safe);
-    localStorage.setItem('santafe_next_shift_cash_pref', safe.toString());
-  };
-
-  // Código del turno actual para segmentación limpia de salidas
-  const currentShiftCode = useMemo(() => {
-    if (shiftType.includes('Completo')) return 'completo';
-    if (shiftType.includes('Turno 1')) return 'turno1';
-    return 'turno2';
-  }, [shiftType]);
-
-  // Almacenamiento maestro persistente de todas las salidas
-  const [allOutflows, setAllOutflows] = useState<CashOutflowItem[]>(() => {
-    return loadOutflows();
+  // 3. PASO 3: Se Cuenta lo que Queda (Para la bolsita / sobre, con Conteo Fácil)
+  const [remainingCashInput, setRemainingCashInput] = useState<string>('');
+  const [showRemainingCounter, setShowRemainingCounter] = useState<boolean>(false);
+  const [remainingDenominations, setRemainingDenominations] = useState<{ [denom: number]: number }>({
+    500: 0, 200: 0, 100: 0, 50: 0, 20: 0, 10: 0, 5: 0, 2: 0, 1: 0
   });
 
-  // Persistir en localStorage
-  useEffect(() => {
-    saveOutflows(allOutflows);
-  }, [allOutflows]);
-
-  // Salidas específicas del turno activo y de hoy:
-  // Al pasar al siguiente turno o al siguiente día, inicia completamente limpio
-  const outflows = useMemo(() => {
-    return allOutflows.filter(o => {
-      // 1. Debe corresponder al día de hoy (al pasar al siguiente día está 100% limpio)
-      const oDate = o.date || (o.createdAt ? o.createdAt.split('T')[0] : '');
-      if (oDate && oDate !== todayStr) return false;
-      if (!oDate) return false; // Salidas antiguas huérfanas sin fecha no se arrastran
-
-      // 2. Coincidencia con el turno seleccionado
-      if (currentShiftCode === 'completo') return true;
-      return o.shiftCode === currentShiftCode;
-    });
-  }, [allOutflows, todayStr, currentShiftCode]);
-
-  // New Outflow Input Form
+  // 4. PASO 4: Salidas / Gastos del Turno
+  const [allOutflows, setAllOutflows] = useState<CashOutflowItem[]>(() => loadOutflows());
+  const [showAddOutflowForm, setShowAddOutflowForm] = useState<boolean>(false);
   const [newConcept, setNewConcept] = useState<string>('');
   const [newAmount, setNewAmount] = useState<string>('');
   const [newRecipient, setNewRecipient] = useState<string>('');
   const [newNotes, setNewNotes] = useState<string>('');
-  const [showAddOutflowForm, setShowAddOutflowForm] = useState<boolean>(false);
 
-  // Cash Count / Arqueo (Optional breakdown)
-  const [showCashBreakdown, setShowCashBreakdown] = useState<boolean>(false);
-  const [cashDenominations, setCashDenominations] = useState<{ [denom: number]: number }>({
-    500: 0,
-    200: 0,
-    100: 0,
-    50: 0,
-    20: 0,
-    10: 0,
-    5: 0,
-    2: 0,
-    1: 0
-  });
-
-  // Manual Cash Count State (entrada manual directa del efectivo físico)
-  const [manualCashInput, setManualCashInput] = useState<string>('');
-  const [isManualCashActive, setIsManualCashActive] = useState<boolean>(false);
-
-  // Observations / Notes
+  // Observaciones y Notas
   const [notes, setNotes] = useState<string>('');
 
-  // Success Notice & Thermal Preview Ticket state
+  // Vista Previa y Guardado
   const [savedCutFolio, setSavedCutFolio] = useState<string | null>(null);
   const [previewCutRecord, setPreviewCutRecord] = useState<ShiftCutRecord | null>(null);
 
@@ -200,7 +151,6 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
     const updateTime = () => {
       const now = new Date();
       setAutoTime(now.toTimeString().slice(0, 5));
-      
       const options: Intl.DateTimeFormatOptions = { 
         weekday: 'long', 
         year: 'numeric', 
@@ -209,25 +159,36 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
       };
       setAutoDateFormatted(now.toLocaleDateString('es-MX', options));
     };
-
     updateTime();
     const interval = setInterval(updateTime, 10000);
     return () => clearInterval(interval);
   }, []);
 
-  // Save cashier name changes
+  // Save cashier name
   useEffect(() => {
     if (cashierName.trim()) {
       localStorage.setItem('santafe_last_cashier_name', cashierName.trim());
     }
   }, [cashierName]);
 
-  // Filter tickets for today (all tickets for day)
+  // Save initialCash and nextShiftCash preferences
+  const handleUpdateInitialCash = (val: number) => {
+    const safe = Math.max(0, val);
+    setInitialCash(safe);
+    localStorage.setItem('santafe_initial_cash_amount', safe.toString());
+  };
+
+  const handleUpdateNextShiftCash = (val: number) => {
+    const safe = Math.max(0, val);
+    setNextShiftCash(safe);
+    localStorage.setItem('santafe_next_shift_cash_amount', safe.toString());
+  };
+
+  // Filter tickets for today
   const allTodayTickets = useMemo(() => {
     return tickets.filter(t => t.date === todayStr);
   }, [tickets, todayStr]);
 
-  // Counts of tickets per shift for today
   const turno1TicketsCount = useMemo(() => {
     return allTodayTickets.filter(t => resolveTicketShift(t) === 'turno1').length;
   }, [allTodayTickets]);
@@ -236,7 +197,7 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
     return allTodayTickets.filter(t => resolveTicketShift(t) === 'turno2').length;
   }, [allTodayTickets]);
 
-  // Filter tickets specifically for the selected shift to cut
+  // Filter tickets for selected shift
   const todayTickets = useMemo(() => {
     return allTodayTickets.filter(t => {
       if (shiftType.includes('Completo')) return true;
@@ -245,124 +206,143 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
     });
   }, [allTodayTickets, shiftType]);
 
-  // Total gross sales
-  const totalGrossSales = useMemo(() => {
+  // Totals detected from tickets in system
+  const systemTotalGross = useMemo(() => {
     return todayTickets.reduce((sum, t) => sum + t.total, 0);
   }, [todayTickets]);
 
-  // Card sales detected automatically from tickets
-  const autoCardSales = useMemo(() => {
+  const systemCardSales = useMemo(() => {
     return todayTickets
       .filter(t => t.paymentMethod === 'tarjeta')
       .reduce((sum, t) => sum + t.total, 0);
   }, [todayTickets]);
 
-  // Manual card override state
-  const [manualCardInput, setManualCardInput] = useState<string>('');
-  const [isManualCardActive, setIsManualCardActive] = useState<boolean>(false);
+  const systemCashSales = useMemo(() => {
+    return Math.max(0, systemTotalGross - systemCardSales);
+  }, [systemTotalGross, systemCardSales]);
 
-  // Sync initial manualCardInput from autoCardSales if not actively overridden
-  useEffect(() => {
-    if (!isManualCardActive) {
-      setManualCardInput(autoCardSales > 0 ? autoCardSales.toString() : '0');
-    }
-  }, [autoCardSales, isManualCardActive]);
-
-  // Effective card sales
-  const effectiveCardSales = useMemo(() => {
-    if (isManualCardActive) {
-      const parsed = parseFloat(manualCardInput);
-      return isNaN(parsed) ? 0 : Math.max(0, parsed);
-    }
-    return autoCardSales;
-  }, [isManualCardActive, manualCardInput, autoCardSales]);
-
-  // Cuadre inmediato de Efectivo:
-  // Efectivo = Total Bruto - Ventas con Tarjeta
-  const effectiveCashSales = useMemo(() => {
-    return Math.max(0, totalGrossSales - effectiveCardSales);
-  }, [totalGrossSales, effectiveCardSales]);
-
-  // Total pieces
+  // Total pieces from tickets
   const totalPieces = useMemo(() => {
     return todayTickets.reduce((sum, t) => {
       return sum + t.items.reduce((s, it) => s + it.quantity, 0);
     }, 0);
   }, [todayTickets]);
 
-  // Desglose Pan vs No Pan (Otros) con lista itemizada de productos no pan registrados
-  const { breadTotal, nonBreadTotal, breadPieces, nonBreadPieces, nonBreadItemsList } = useMemo(() => {
-    return calculateTicketsBreakdown(todayTickets);
-  }, [todayTickets]);
+  // Initialize card input on first load from tickets if user hasn't typed yet
+  useEffect(() => {
+    if (!hasInitializedInputs) {
+      setManualCardInput(systemCardSales > 0 ? systemCardSales.toString() : '');
+      setHasInitializedInputs(true);
+    }
+  }, [systemCardSales, hasInitializedInputs]);
 
-  // Outflows total sum
+  // Re-sync helper when user clicks "Copiar de tickets"
+  const handleCopyCardFromTickets = () => {
+    playBeep(650, 'sine', 0.03);
+    setManualCardInput(systemCardSales.toString());
+  };
+
+  // 1. PASO 1: Venta con Tarjeta ingresada manualmente
+  const effectiveCardSales = useMemo(() => {
+    const val = parseFloat(manualCardInput);
+    return isNaN(val) ? 0 : Math.max(0, val);
+  }, [manualCardInput]);
+
+  // Venta en efectivo calculada conforme a las ventas del sistema
+  const systemCashSalesExpected = useMemo(() => {
+    return Math.max(0, systemTotalGross - effectiveCardSales);
+  }, [systemTotalGross, effectiveCardSales]);
+
+  // Venta total bruta del turno
+  const totalGrossSales = useMemo(() => {
+    return systemTotalGross;
+  }, [systemTotalGross]);
+
+  // Outflows filtered for active shift
+  const currentShiftCode = useMemo<'turno1' | 'turno2' | 'completo'>(() => {
+    if (shiftType.includes('Turno 1')) return 'turno1';
+    if (shiftType.includes('Turno 2')) return 'turno2';
+    return 'completo';
+  }, [shiftType]);
+
+  const outflows = useMemo(() => {
+    return allOutflows.filter(o => {
+      if (o.date !== todayStr) return false;
+      if (currentShiftCode === 'completo') return true;
+      if (!o.shiftCode) return true;
+      return o.shiftCode === currentShiftCode;
+    });
+  }, [allOutflows, todayStr, currentShiftCode]);
+
   const totalOutflows = useMemo(() => {
     return outflows.reduce((sum, o) => sum + o.amount, 0);
   }, [outflows]);
 
-  // Expected Cash in Drawer = Initial Cash + Effective Cash Sales - Total Outflows
-  const expectedCashInDrawer = useMemo(() => {
-    return (initialCash || 0) + effectiveCashSales - totalOutflows;
-  }, [initialCash, effectiveCashSales, totalOutflows]);
+  // Desglose Pan vs No Pan
+  const { breadTotal, nonBreadTotal, breadPieces, nonBreadPieces, nonBreadItemsList } = useMemo(() => {
+    return calculateTicketsBreakdown(todayTickets);
+  }, [todayTickets]);
 
-  // Cash to Deliver = Expected Cash in Drawer - Next Shift Cash (amount left in drawer for next shift)
-  const cashToDeliver = useMemo(() => {
-    return Math.max(0, expectedCashInDrawer - (nextShiftCash || 0));
-  }, [expectedCashInDrawer, nextShiftCash]);
+  // CÁLCULO CONFORME A LAS VENTAS (CUADRE DE LA BOLSITA):
+  // 1. ¿Cuánto TENÍA que ponerse en la bolsita?
+  // Efectivo de ventas cobrado en el turno menos las salidas pagadas
+  const expectedInBag = useMemo(() => {
+    return Math.max(0, systemCashSalesExpected - totalOutflows);
+  }, [systemCashSalesExpected, totalOutflows]);
 
-  // Counted Cash from denomination breakdown
-  const actualCashCounted = useMemo(() => {
-    return Object.entries(cashDenominations).reduce((sum, [denom, count]) => {
-      const countNum = typeof count === 'number' ? count : Number(count || 0);
-      return sum + (Number(denom) * countNum);
-    }, 0);
-  }, [cashDenominations]);
+  // 2. ¿Cuánto REALMENTE quedó contado en el Paso 3?
+  const hasEnteredRemainingCash = useMemo(() => {
+    return remainingCashInput.trim() !== '' && !isNaN(parseFloat(remainingCashInput));
+  }, [remainingCashInput]);
 
-  // Effective Physical Cash: Either manually typed or summed from denominations
-  const effectiveActualCash = useMemo(() => {
-    if (isManualCashActive) {
-      const parsed = parseFloat(manualCashInput);
-      return isNaN(parsed) ? 0 : Math.max(0, parsed);
+  const actualInBag = useMemo(() => {
+    if (hasEnteredRemainingCash) {
+      const val = parseFloat(remainingCashInput);
+      return isNaN(val) ? 0 : Math.max(0, val);
     }
-    return actualCashCounted;
-  }, [isManualCashActive, manualCashInput, actualCashCounted]);
+    return expectedInBag;
+  }, [hasEnteredRemainingCash, remainingCashInput, expectedInBag]);
 
-  const hasEnteredActualCash = isManualCashActive 
-    ? (manualCashInput.trim() !== '' && !isNaN(parseFloat(manualCashInput)))
-    : actualCashCounted > 0;
+  // 3. Diferencia: ¿Hay sobrante o faltante en la bolsita?
+  const bagDifference = useMemo(() => {
+    if (!hasEnteredRemainingCash) return 0;
+    return actualInBag - expectedInBag;
+  }, [hasEnteredRemainingCash, actualInBag, expectedInBag]);
 
-  // Discrepancia: Dinero físico contado vs lo que marca el sistema
-  // > 0 = Sobrante, < 0 = Faltante, === 0 = Cuadre exacto
-  const cashDifference = hasEnteredActualCash ? (effectiveActualCash - expectedCashInDrawer) : 0;
-  const actualCashToDeliver = hasEnteredActualCash 
-    ? Math.max(0, effectiveActualCash - (nextShiftCash || 0)) 
-    : cashToDeliver;
+  const cashToDeliver = actualInBag;
+  const salesDifference = bagDifference;
 
-  // Add Outflow Handler
+  const handleCopyExpectedInBag = () => {
+    playBeep(650, 'sine', 0.03);
+    setRemainingCashInput(expectedInBag.toString());
+  };
+
+  // Outflow Handlers
   const handleAddOutflow = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const amountNum = parseFloat(newAmount);
     if (!newConcept.trim() || isNaN(amountNum) || amountNum <= 0) {
-      playBeep(250, 'sawtooth', 0.15);
+      alert('Por favor escribe el concepto y un monto válido para la salida.');
       return;
     }
 
-    playCashSound();
-
-    const newOutflowItem: CashOutflowItem = {
-      id: `outflow-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    const newItem: CashOutflowItem = {
+      id: `out-${Date.now()}`,
       concept: newConcept.trim(),
       amount: Math.round(amountNum),
-      time: getNowTimeString(),
+      time: autoTime,
       date: todayStr,
-      shiftCode: currentShiftCode === 'completo' ? 'turno1' : currentShiftCode,
-      shiftName: shiftType,
       recipient: newRecipient.trim() || undefined,
       notes: newNotes.trim() || undefined,
-      createdAt: new Date().toISOString()
+      shiftCode: currentShiftCode,
+      shiftName: shiftType
     };
 
-    setAllOutflows(prev => [newOutflowItem, ...prev]);
+    const updated = [newItem, ...allOutflows];
+    setAllOutflows(updated);
+    saveOutflows(updated);
+
+    playCashSound();
     setNewConcept('');
     setNewAmount('');
     setNewRecipient('');
@@ -370,23 +350,11 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
     setShowAddOutflowForm(false);
   };
 
-  // Remove Outflow Handler
-  const handleRemoveOutflow = (id: string) => {
-    playBeep(400, 'sine', 0.08);
-    setAllOutflows(prev => prev.filter(o => o.id !== id));
-  };
-
-  // Limpiar/Vaciar todas las salidas de este turno
-  const handleClearCurrentShiftOutflows = () => {
-    if (outflows.length === 0) return;
-    const shiftLabel = currentShiftCode === 'turno1' ? 'Turno 1' : currentShiftCode === 'turno2' ? 'Turno 2' : 'Día Completo';
-    const confirmClear = window.confirm(
-      `¿Deseas vaciar/limpiar las ${outflows.length} salidas registradas para ${shiftLabel}? Esta acción dejará las salidas de este turno en ceros.`
-    );
-    if (!confirmClear) return;
-    playBeep(400, 'sine', 0.08);
-    const shiftIds = new Set(outflows.map(o => o.id));
-    setAllOutflows(prev => prev.filter(o => !shiftIds.has(o.id)));
+  const handleDeleteOutflow = (id: string) => {
+    playBeep(450, 'sine', 0.04);
+    const updated = allOutflows.filter(o => o.id !== id);
+    setAllOutflows(updated);
+    saveOutflows(updated);
   };
 
   // Build current shift cut record
@@ -400,9 +368,12 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
       shiftName: shiftType,
       initialCash,
       totalGrossSales,
-      totalCashSales: effectiveCashSales,
+      totalCashSales: systemCashSalesExpected,
       totalCardSales: effectiveCardSales,
-      isCardManualOverride: isManualCardActive,
+      systemGrossSales: systemTotalGross,
+      systemCashSales,
+      systemCardSales,
+      isCardManualOverride: true,
       totalBreadSales: breadTotal,
       totalNonBreadSales: nonBreadTotal,
       breadPieces,
@@ -412,11 +383,16 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
       ticketsCount: todayTickets.length,
       outflows,
       totalOutflows,
-      expectedCashInDrawer,
+      expectedCashInDrawer: systemTotalGross,
       nextShiftCash,
-      cashToDeliver: hasEnteredActualCash ? actualCashToDeliver : cashToDeliver,
-      actualCashInDrawer: hasEnteredActualCash ? effectiveActualCash : undefined,
-      difference: hasEnteredActualCash ? cashDifference : undefined,
+      cashToDeliver: actualInBag,
+      expectedInBag,
+      actualInBag,
+      bagDifference,
+      actualCashInDrawer: nextShiftCash + actualInBag,
+      difference: bagDifference,
+      nextShiftBillsBreakdown: nextShiftDenominations,
+      drawerCashBreakdown: remainingDenominations,
       notes: notes.trim() || undefined,
       createdAt: new Date().toISOString()
     };
@@ -429,12 +405,11 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
     setPreviewCutRecord(cutRecord);
   };
 
-  // Guardar y abrir diálogo de impresión real
+  // Guardar y abrir impresión térmica
   const handleSaveAndPrintCut = (printImmediately: boolean = true) => {
     const folio = getNextShiftCutFolio();
     const newCut = getCurrentCutRecord(folio);
 
-    // Save cut in historical records
     const existingCuts = loadShiftCuts();
     saveShiftCuts([newCut, ...existingCuts]);
 
@@ -471,12 +446,12 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
       >
         <div 
           id="shift-cut-modal-container"
-          className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl border-2 border-amber-300 overflow-hidden my-4 max-h-[92vh] flex flex-col animate-in zoom-in-95 duration-200"
+          className="bg-white rounded-3xl max-w-3xl w-full shadow-2xl border-2 border-amber-300 overflow-hidden my-3 max-h-[95vh] flex flex-col animate-in zoom-in-95 duration-150"
         >
-          {/* Header */}
-          <div className="bg-gradient-to-r from-[#2D3142] via-slate-800 to-[#2D3142] text-white p-4 sm:p-5 flex items-center justify-between border-b-2 border-amber-400">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-amber-400/20 border border-amber-400/40 text-amber-300 flex items-center justify-center font-bold shadow-inner">
+          {/* HEADER PRINCIPAL */}
+          <div className="bg-gradient-to-r from-[#2D3142] via-slate-800 to-[#2D3142] text-white p-3.5 sm:p-4 flex items-center justify-between border-b-2 border-amber-400 shrink-0">
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-2xl bg-amber-400/20 border border-amber-400/50 text-amber-300 flex items-center justify-center font-bold shadow-inner">
                 <Receipt className="w-6 h-6" />
               </div>
               <div>
@@ -485,472 +460,555 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
                     Corte de Caja / Turno
                   </h2>
                   <span className="bg-amber-400 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">
-                    Santa Fé
+                    {settings.bakeryName || 'Santa Fé'}
                   </span>
                 </div>
-                <p className="text-xs text-amber-200/90 font-medium">
-                  Panadería Santa Fé el refugio • Balance, Tarjetas y Salidas
+                <p className="text-[11px] text-amber-200/90 font-bold">
+                  Llenado fácil y rápido paso a paso
                 </p>
               </div>
             </div>
 
             <button
+              id="close-shift-cut-modal-btn"
               type="button"
               onClick={onClose}
               className="text-slate-400 hover:text-white p-2 rounded-full hover:bg-white/10 transition-colors cursor-pointer"
+              title="Cerrar ventana"
             >
-              <X className="w-5 h-5" />
+              <X className="w-6 h-6" />
             </button>
           </div>
 
-          {/* Scrollable Content Body */}
-          <div className="p-4 sm:p-6 overflow-y-auto space-y-5 flex-1 text-slate-800">
-            {/* Section 1: Cashier Selector & Auto-Timestamp */}
-            <div className="bg-amber-50/70 rounded-2xl p-4 border border-amber-200/80 shadow-xs space-y-3">
+          {/* CUERPO DEL CORTE (SCROLLABLE) */}
+          <div className="p-3.5 sm:p-5 overflow-y-auto space-y-4 flex-1 text-slate-800 text-sm">
+            
+            {/* SELECCIÓN RÁPIDA DE ENCARGADA Y TURNO */}
+            <div className="bg-amber-50/70 rounded-2xl p-3 border border-amber-200 shadow-2xs space-y-2.5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* Cashier Selection */}
+                {/* Encargada */}
                 <div>
-                  <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                    <span className="flex items-center gap-1.5">
-                      <User className="w-3.5 h-3.5 text-[#D95D39]" />
-                      <span>Encargado / Cajero(a):</span>
-                    </span>
-                    {cashierName && (
-                      <span className="text-[10px] text-amber-900 font-bold">
-                        {cashierName}
-                      </span>
-                    )}
-                  </label>
-
-                  {/* Fast Selector Buttons for Personnel: Mary, Paty, Jaz, Natty, Jonathan */}
-                  <div className="grid grid-cols-5 gap-1 sm:gap-1.5 mb-2">
+                  <span className="text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-1">
+                    👤 Encargada / Cajera(o):
+                  </span>
+                  <div className="grid grid-cols-5 gap-1">
                     {CASHIER_PRESETS.map((name) => {
                       const isSelected = cashierName === name;
                       return (
                         <button
                           key={name}
                           type="button"
-                          id={`cashier-btn-${name.toLowerCase()}`}
                           onClick={() => {
                             setCashierName(name);
                             playBeep(600, 'sine', 0.03);
                           }}
-                          className={`py-1.5 px-1 sm:px-2 rounded-xl text-[11px] sm:text-xs font-black transition-all cursor-pointer border text-center truncate ${
+                          className={`py-1.5 px-1 rounded-xl text-xs font-black transition-all cursor-pointer border text-center truncate ${
                             isSelected
                               ? 'bg-amber-600 text-white border-amber-700 shadow-xs ring-2 ring-amber-400/50'
                               : 'bg-white hover:bg-amber-100 text-slate-700 border-amber-200'
                           }`}
-                          title={`Seleccionar ${name}`}
                         >
                           {name}
                         </button>
                       );
                     })}
                   </div>
-
-                  <input
-                    type="text"
-                    id="shift-cashier-name-input"
-                    value={cashierName}
-                    onChange={(e) => setCashierName(e.target.value)}
-                    placeholder="O escribe el nombre manualmente..."
-                    className="w-full bg-white px-3.5 py-2 rounded-xl font-bold text-xs text-slate-900 border border-amber-300 focus:outline-none focus:ring-2 focus:ring-[#D95D39] shadow-xs"
-                  />
                 </div>
 
-                {/* Shift Selection with Quick Shift Switch Buttons */}
+                {/* Turno */}
                 <div>
-                  <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                    <span className="flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5 text-[#D95D39]" />
-                      <span>Turno a Cortar:</span>
-                    </span>
-                    <span className="text-[10px] text-slate-500 font-bold">
-                      Hora actual: {autoTime}
-                    </span>
-                  </label>
-
-                  {/* Switch rápido de turnos con conteo de tickets */}
-                  <div className="grid grid-cols-3 gap-1.5 mb-2">
+                  <span className="text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-1">
+                    🕒 Turno a Cortar:
+                  </span>
+                  <div className="grid grid-cols-3 gap-1">
                     <button
                       type="button"
                       onClick={() => setShiftType('Turno 1 (Mañana 07:00 a 15:00)')}
-                      className={`p-2 rounded-xl text-left transition-all cursor-pointer border-2 flex flex-col justify-between ${
+                      className={`p-1.5 rounded-xl text-center border-2 transition-all cursor-pointer ${
                         shiftType.includes('Turno 1')
-                          ? 'bg-amber-500 text-amber-950 border-amber-600 shadow-xs ring-2 ring-amber-400/50'
-                          : 'bg-white hover:bg-amber-50 text-slate-700 border-amber-200'
+                          ? 'bg-amber-500 text-amber-950 border-amber-600 font-black shadow-xs ring-2 ring-amber-400/50'
+                          : 'bg-white text-slate-700 border-amber-200 font-bold'
                       }`}
                     >
-                      <div className="font-black text-xs flex items-center gap-1">
-                        <span>🌅</span>
-                        <span>Turno 1</span>
-                      </div>
-                      <div className="text-[10px] font-bold opacity-80 mt-0.5">
-                        {turno1TicketsCount} tickets
-                      </div>
+                      <div className="text-xs">🌅 Turno 1</div>
+                      <div className="text-[9.5px] opacity-80">{turno1TicketsCount} tks</div>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setShiftType('Turno 2 (Tarde 15:00 a 22:00)')}
-                      className={`p-2 rounded-xl text-left transition-all cursor-pointer border-2 flex flex-col justify-between ${
+                      className={`p-1.5 rounded-xl text-center border-2 transition-all cursor-pointer ${
                         shiftType.includes('Turno 2')
-                          ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs ring-2 ring-indigo-400/50'
-                          : 'bg-white hover:bg-indigo-50 text-slate-700 border-slate-200'
+                          ? 'bg-indigo-600 text-white border-indigo-700 font-black shadow-xs ring-2 ring-indigo-400/50'
+                          : 'bg-white text-slate-700 border-slate-200 font-bold'
                       }`}
                     >
-                      <div className="font-black text-xs flex items-center gap-1">
-                        <span>🌇</span>
-                        <span>Turno 2</span>
-                      </div>
-                      <div className="text-[10px] font-bold opacity-80 mt-0.5">
-                        {turno2TicketsCount} tickets
-                      </div>
+                      <div className="text-xs">🌇 Turno 2</div>
+                      <div className="text-[9.5px] opacity-80">{turno2TicketsCount} tks</div>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setShiftType('Turno Completo')}
-                      className={`p-2 rounded-xl text-left transition-all cursor-pointer border-2 flex flex-col justify-between ${
+                      className={`p-1.5 rounded-xl text-center border-2 transition-all cursor-pointer ${
                         shiftType.includes('Completo')
-                          ? 'bg-slate-800 text-white border-slate-900 shadow-xs ring-2 ring-slate-400/50'
-                          : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-200'
+                          ? 'bg-slate-800 text-white border-slate-900 font-black shadow-xs ring-2 ring-slate-400/50'
+                          : 'bg-white text-slate-700 border-slate-200 font-bold'
                       }`}
                     >
-                      <div className="font-black text-xs flex items-center gap-1">
-                        <span>🗓️</span>
-                        <span>Todo el Día</span>
-                      </div>
-                      <div className="text-[10px] font-bold opacity-80 mt-0.5">
-                        {allTodayTickets.length} tickets
-                      </div>
+                      <div className="text-xs">🗓️ Todo el Día</div>
+                      <div className="text-[9.5px] opacity-80">{allTodayTickets.length} tks</div>
                     </button>
                   </div>
-
-                  <select
-                    value={shiftType}
-                    onChange={(e) => setShiftType(e.target.value)}
-                    className="w-full bg-white px-3 py-1.5 rounded-xl font-bold text-xs text-slate-900 border border-amber-300 focus:outline-none focus:ring-2 focus:ring-[#D95D39] shadow-2xs cursor-pointer"
-                  >
-                    <option value="Turno 1 (Mañana 07:00 a 15:00)">🌅 Turno 1 (Mañana 07:00 a 15:00)</option>
-                    <option value="Turno 2 (Tarde 15:00 a 22:00)">🌇 Turno 2 (Tarde 15:00 a 22:00)</option>
-                    <option value="Turno Completo">🗓️ Turno Completo (Día)</option>
-                  </select>
                 </div>
               </div>
 
-              {/* Auto Time & Date Badges */}
-              <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-amber-200/60 text-xs">
-                <div className="flex items-center gap-2 text-slate-700">
-                  <Calendar className="w-3.5 h-3.5 text-amber-700" />
-                  <span className="font-bold capitalize">{autoDateFormatted || todayStr}</span>
-                </div>
-                <div className="flex items-center gap-1.5 bg-amber-200/80 text-amber-950 font-black px-2.5 py-1 rounded-lg">
-                  <Clock className="w-3.5 h-3.5 text-[#D95D39] animate-pulse" />
-                  <span>Hora Auto-Registrada: {autoTime}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Section 2: Sales Summary Grid & Manual Card / Cash Auto-Square */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                  <DollarSign className="w-4 h-4 text-emerald-600" />
-                  <span>Resumen de Ventas y Cuadre de Cobros (Hoy)</span>
-                </h3>
-                <span className="text-[11px] text-slate-500 font-bold">
-                  {todayTickets.length} tickets emitidos
+              {/* Hora y Fecha en barra delgada */}
+              <div className="flex items-center justify-between pt-1.5 border-t border-amber-200/60 text-[11px] text-slate-600 font-bold">
+                <span className="capitalize">{autoDateFormatted || todayStr}</span>
+                <span className="bg-amber-200/70 text-amber-950 font-mono px-2 py-0.5 rounded font-black">
+                  Hora: {autoTime}
                 </span>
               </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                {/* Total Bruto */}
-                <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Total Ventas Bruto</span>
-                  <span className="text-xl font-black text-slate-900">${totalGrossSales}.00</span>
-                  <span className="text-[10px] text-slate-500 block">{totalPieces} pzs totales</span>
-                </div>
-
-                {/* Tarjeta - Con entrada manual directa */}
-                <div className={`rounded-2xl p-3 border transition-all ${
-                  isManualCardActive ? 'bg-blue-50/90 border-blue-400 ring-2 ring-blue-300/60' : 'bg-blue-50/70 border-blue-200'
-                }`}>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-black text-blue-900 uppercase tracking-wider block">
-                      💳 Pago Tarjeta
-                    </span>
-                    {isManualCardActive && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsManualCardActive(false);
-                          setManualCardInput(autoCardSales.toString());
-                        }}
-                        title="Restablecer a tickets"
-                        className="text-[9px] text-blue-700 hover:text-blue-900 font-bold flex items-center gap-0.5 bg-blue-200/70 px-1.5 py-0.5 rounded cursor-pointer"
-                      >
-                        <RotateCcw className="w-2.5 h-2.5" />
-                        <span>Auto</span>
-                      </button>
-                    )}
-                  </div>
-                  
-                  <div className="mt-1 flex items-center">
-                    <span className="text-sm font-black text-blue-800 mr-1">$</span>
-                    <input
-                      type="number"
-                      id="shift-manual-card-input"
-                      step="1"
-                      min="0"
-                      value={isManualCardActive ? manualCardInput : effectiveCardSales}
-                      onChange={(e) => {
-                        setIsManualCardActive(true);
-                        setManualCardInput(e.target.value);
-                      }}
-                      placeholder="0"
-                      className="w-full bg-white px-2 py-1 rounded-lg text-lg font-black text-blue-700 border border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-                    />
-                  </div>
-                  <span className="text-[9.5px] text-blue-800 font-medium block mt-1">
-                    {isManualCardActive ? '✏️ Monto Manual (Terminal)' : 'Ingresa monto si terminal no conecta'}
-                  </span>
-                </div>
-
-                {/* Efectivo Cobrado (Cuadrado de inmediato) */}
-                <div className="bg-emerald-50/90 rounded-2xl p-3 border border-emerald-300 shadow-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-black text-emerald-900 uppercase tracking-wider block">
-                      💵 Efectivo Cobrado
-                    </span>
-                    <span className="text-[9px] bg-emerald-200 text-emerald-950 font-black px-1.5 py-0.2 rounded">
-                      Cuadre Auto
-                    </span>
-                  </div>
-                  <span className="text-xl font-black text-emerald-700 block mt-1">
-                    ${effectiveCashSales}.00
-                  </span>
-                  <span className="text-[9.5px] text-emerald-800 font-medium block">
-                    (Total - Tarjeta = Efectivo)
-                  </span>
-                </div>
-
-                {/* Total Piezas */}
-                <div className="bg-amber-50/80 rounded-2xl p-3 border border-amber-200">
-                  <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">🥖 Piezas / Arts</span>
-                  <span className="text-xl font-black text-[#D95D39] block mt-1">{totalPieces}</span>
-                  <span className="text-[10px] text-amber-700 block">Total artículos</span>
-                </div>
-              </div>
-
-              {/* Desglose Venta de Pan vs Venta de Otros (No Pan) */}
-              <div className="bg-gradient-to-r from-amber-100/60 via-white to-blue-50/60 rounded-2xl p-3.5 border border-amber-300/80 shadow-2xs">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                    <Wheat className="w-4 h-4 text-amber-700" />
-                    <span>Desglose: Venta de Pan vs Venta de Otros (No Pan)</span>
-                  </span>
-                  <span className="text-[10px] bg-amber-200 text-amber-950 font-black px-2 py-0.5 rounded-full">
-                    Mostrador Hoy
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {/* Card Venta de Pan */}
-                  <div className="bg-white rounded-xl p-2.5 border-2 border-amber-300 flex items-center justify-between shadow-2xs">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center font-black text-sm">
-                        🍞
-                      </div>
-                      <div>
-                        <div className="text-xs font-black text-slate-900">Venta de Pan</div>
-                        <div className="text-[10px] text-slate-500 font-bold">{breadPieces} piezas vendidas</div>
-                      </div>
-                    </div>
-                    <div className="text-base font-black text-amber-900 font-mono">
-                      ${breadTotal}.00
-                    </div>
-                  </div>
-
-                  {/* Card Venta de Otros (No Pan) */}
-                  <div className="bg-white rounded-xl p-2.5 border-2 border-blue-300 flex items-center justify-between shadow-2xs">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-black text-sm">
-                        🥛
-                      </div>
-                      <div>
-                        <div className="text-xs font-black text-slate-900">Otros (No es Pan)</div>
-                        <div className="text-[10px] text-slate-500 font-bold">{nonBreadPieces} arts (Lácteos, paletas, bebidas...)</div>
-                      </div>
-                    </div>
-                    <div className="text-base font-black text-blue-900 font-mono">
-                      ${nonBreadTotal}.00
-                    </div>
-                  </div>
-                </div>
-
-                {/* Listado Desglosado de Productos No-Pan Registrados (ej. Paletas, Quesos, Leche, etc.) */}
-                {nonBreadItemsList && nonBreadItemsList.length > 0 ? (
-                  <div className="mt-3 bg-white/90 rounded-xl p-2.5 border border-blue-200">
-                    <div className="text-[11px] font-black text-blue-950 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                      <span className="flex items-center gap-1">
-                        <span>🍦</span>
-                        <span>Desglose Detallado de No-Pan ({nonBreadItemsList.length} productos registrados):</span>
-                      </span>
-                      <span className="text-[10px] bg-blue-100 text-blue-900 font-bold px-1.5 py-0.5 rounded">
-                        Se incluye en Ticket de Corte
-                      </span>
-                    </div>
-                    <div className="divide-y divide-blue-100 max-h-36 overflow-y-auto pr-1">
-                      {nonBreadItemsList.map((item, idx) => (
-                        <div key={idx} className="py-1 flex items-center justify-between text-xs">
-                          <span className="font-bold text-slate-800 flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-                            {item.name}
-                          </span>
-                          <div className="flex items-center gap-3">
-                            <span className="text-slate-600 font-bold bg-slate-100 px-1.5 py-0.2 rounded text-[11px]">
-                              {item.quantity} {item.quantity === 1 ? 'pza' : 'pzas'}
-                            </span>
-                            <span className="font-black text-blue-900 font-mono text-xs min-w-[50px] text-right">
-                              ${item.total}.00
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="mt-2 text-[10px] text-slate-500 italic bg-white/50 px-2 py-1 rounded-lg border border-dashed border-slate-300">
-                    * No se registraron artículos no-pan (paletas, quesos, leche, etc.) en los tickets de este turno.
-                  </div>
-                )}
-              </div>
             </div>
 
-            {/* Section 3: SALIDAS / PAGOS A PROVEEDORES DESGLOSADAS */}
-            <div className="bg-rose-50/70 rounded-2xl p-4 border-2 border-rose-200 space-y-3">
-              <div className="flex items-center justify-between flex-wrap gap-2">
+            {/* ========================================================= */}
+            {/* 1. PASO 1: PAGO CON TARJETA */}
+            {/* ========================================================= */}
+            <div className="bg-white rounded-3xl p-3.5 sm:p-4 border-2 border-blue-400 shadow-sm space-y-3">
+              <div className="flex items-center justify-between border-b border-blue-200 pb-2">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center font-bold">
-                    <TrendingDown className="w-4 h-4" />
+                  <div className="w-7 h-7 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-sm shadow-xs">
+                    1
                   </div>
                   <div>
-                    <h3 className="font-black text-sm text-rose-950 flex items-center gap-1.5 flex-wrap">
-                      <span>Salidas de Dinero / Pagos a Proveedores</span>
-                      <span className="bg-rose-600 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">
-                        {currentShiftCode === 'turno1' ? 'Turno 1 (Mañana)' : currentShiftCode === 'turno2' ? 'Turno 2 (Tarde)' : 'Todo el Día'}
-                      </span>
+                    <h3 className="text-sm font-black text-slate-900 leading-tight">
+                      Pago con Tarjeta
                     </h3>
-                    <p className="text-[11px] text-rose-700 font-medium">
-                      Cada turno y día inicia limpio en ceros. Solo se descuentan del efectivo de este turno.
+                    <p className="text-[11px] text-slate-600 font-bold leading-none mt-0.5">
+                      Ingresa el monto cobrado en tu terminal bancaria o vouchers del turno
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1.5">
-                  {outflows.length > 0 && (
+                <div className="text-right">
+                  <span className="text-[10px] text-slate-500 font-bold block">Venta Total Sistema:</span>
+                  <span className="text-base sm:text-lg font-black text-slate-900 font-mono">
+                    ${systemTotalGross}.00
+                  </span>
+                </div>
+              </div>
+
+              {/* Input Pago con Tarjeta */}
+              <div className="bg-blue-50/70 rounded-2xl p-3 border-2 border-blue-300 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-blue-950 uppercase tracking-wider flex items-center gap-1.5">
+                    <CreditCard className="w-4 h-4 text-blue-600" />
+                    <span>Cobrado con Tarjeta (Terminal / Vouchers)</span>
+                  </span>
+                  {systemCardSales > 0 && (
                     <button
                       type="button"
-                      onClick={handleClearCurrentShiftOutflows}
-                      className="bg-white hover:bg-rose-100 text-rose-700 border border-rose-300 font-bold text-xs py-1.5 px-2.5 rounded-xl flex items-center gap-1 transition-colors cursor-pointer"
-                      title="Vaciar las salidas de este turno"
+                      onClick={handleCopyCardFromTickets}
+                      className="text-[10px] text-blue-700 bg-white hover:bg-blue-100 border border-blue-300 px-2 py-0.5 rounded-lg font-bold cursor-pointer transition-colors"
+                      title="Copiar del sistema"
                     >
-                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                      <span>Limpiar Turno</span>
+                      📋 Copiar (${systemCardSales})
                     </button>
                   )}
+                </div>
+
+                <div className="relative flex items-center">
+                  <span className="absolute left-3 text-xl font-black text-blue-700 font-mono">$</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    id="manual-card-sales-input"
+                    value={manualCardInput}
+                    onChange={(e) => setManualCardInput(cleanAmountInput(e.target.value))}
+                    onFocus={(e) => e.target.select()}
+                    placeholder="0"
+                    className="w-full pl-8 pr-3 py-2 bg-white rounded-xl text-xl sm:text-2xl font-black text-blue-700 border-2 border-blue-400 focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-300 font-mono shadow-2xs"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] text-blue-900 font-medium">
+                  <span>
+                    Venta en Efectivo esperada: <strong className="font-mono text-blue-950 font-black">${systemCashSalesExpected}.00</strong>
+                  </span>
                   <button
                     type="button"
-                    id="toggle-add-outflow-btn"
-                    onClick={() => setShowAddOutflowForm(prev => !prev)}
-                    className="bg-rose-600 hover:bg-rose-700 text-white font-black text-xs py-1.5 px-3 rounded-xl flex items-center gap-1 shadow-xs active:scale-95 cursor-pointer"
+                    onClick={() => setManualCardInput('')}
+                    className="text-[10px] text-blue-600 hover:underline font-bold cursor-pointer"
                   >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>{showAddOutflowForm ? 'Cerrar Formulario' : '+ Agregar Salida'}</span>
+                    Poner $0
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* ========================================================= */}
+            {/* 2. PASO 2: SE DEJAN 1000 EN CAJA (INCLUIR CONTEO FÁCIL) */}
+            {/* ========================================================= */}
+            <div className="bg-indigo-50/70 rounded-3xl p-3.5 sm:p-4 border-2 border-indigo-300 shadow-sm space-y-3">
+              <div className="flex items-center justify-between border-b border-indigo-200 pb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-xl bg-indigo-700 text-white flex items-center justify-center font-black text-sm shadow-xs">
+                    2
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-indigo-950 leading-tight">
+                      Se Dejan $1,000 en Caja (Fondo de Cambio)
+                    </h3>
+                    <p className="text-[11px] text-indigo-800 font-bold leading-none mt-0.5">
+                      Fondo que se aparta y se queda en el cajón para cambio del siguiente turno
+                    </p>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <span className="text-xs font-bold text-indigo-800 block">Fondo en Caja:</span>
+                  <span className="text-lg font-black text-indigo-900 font-mono">
+                    ${nextShiftCash}.00
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-indigo-200">
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <span className="text-xs font-black text-indigo-950">Monto a dejar:</span>
+                  <div className="relative flex items-center">
+                    <span className="absolute left-2.5 font-black text-indigo-700 font-mono">$</span>
+                    <input
+                      type="number"
+                      step="50"
+                      min="0"
+                      value={nextShiftCash}
+                      onChange={(e) => handleUpdateNextShiftCash(parseFloat(e.target.value) || 0)}
+                      onFocus={(e) => e.target.select()}
+                      className="w-28 pl-6 pr-2 py-1.5 bg-indigo-50/50 rounded-xl text-base font-black text-indigo-950 border border-indigo-300 font-mono text-center focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateNextShiftCash(1000)}
+                      className="px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-900 rounded-lg text-xs font-black cursor-pointer"
+                      title="Dejar $1,000 normal"
+                    >
+                      $1,000
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateNextShiftCash(500)}
+                      className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-black cursor-pointer"
+                      title="Dejar $500"
+                    >
+                      $500
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateNextShiftCash(0)}
+                      className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-black cursor-pointer"
+                      title="Dejar $0"
+                    >
+                      $0
+                    </button>
+                  </div>
+                </div>
+
+                {/* BOTÓN CONTEO FÁCIL PARA EL FONDO DE CAJA */}
+                <button
+                  type="button"
+                  id="toggle-next-shift-bills-btn"
+                  onClick={() => {
+                    playBeep(700, 'sine', 0.03);
+                    setShowNextShiftCounter(prev => {
+                      const next = !prev;
+                      if (next) {
+                        const total = calculateDenominationsTotal(nextShiftDenominations);
+                        handleUpdateNextShiftCash(total);
+                      }
+                      return next;
+                    });
+                  }}
+                  className="w-full sm:w-auto px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-black text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm cursor-pointer transition-all active:scale-98"
+                >
+                  <Coins className="w-4 h-4" />
+                  <span>
+                    {showNextShiftCounter ? '▲ Ocultar Conteo' : '🔢 Conteo Fácil de Cambio ($1,000)'}
+                  </span>
+                </button>
+              </div>
+
+              {/* PANEL DE CONTEO FÁCIL PARA FONDO DE SIGUIENTE TURNO */}
+              {showNextShiftCounter && (
+                <CashDenominationSelector
+                  title="Conteo Fácil para Cambio en Caja ($1,000)"
+                  subtitle="Selecciona los billetes y monedas que se quedan en el cajón (deben sumar $1,000)"
+                  denominations={nextShiftDenominations}
+                  onChange={(updated, total) => {
+                    setNextShiftDenominations(updated);
+                    handleUpdateNextShiftCash(total);
+                  }}
+                  autoTargetNotice="Colocado automáticamente en el Monto a Dejar"
+                  onlyBills={false}
+                  onApply={(total) => {
+                    handleUpdateNextShiftCash(total);
+                    setShowNextShiftCounter(false);
+                  }}
+                  onCancel={() => setShowNextShiftCounter(false)}
+                />
+              )}
+            </div>
+
+            {/* ========================================================= */}
+            {/* 3. PASO 3: SE CUENTA LO QUE QUEDA (PARA LA BOLSITA) */}
+            {/* ========================================================= */}
+            <div className="bg-emerald-50/70 rounded-3xl p-3.5 sm:p-4 border-2 border-emerald-400 shadow-sm space-y-3">
+              <div className="flex items-center justify-between border-b border-emerald-200 pb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-xl bg-emerald-700 text-white flex items-center justify-center font-black text-sm shadow-xs">
+                    3
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-emerald-950 leading-tight">
+                      Se Cuenta lo que Queda (Para la Bolsita / Sobre)
+                    </h3>
+                    <p className="text-[11px] text-emerald-800 font-bold leading-none mt-0.5">
+                      Una vez apartados los $1,000 en la caja, cuenta todo el dinero restante que se entregará al patrón
+                    </p>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <span className="text-xs font-bold text-emerald-800 block">Efectivo Contado:</span>
+                  <span className="text-lg font-black text-emerald-900 font-mono">
+                    ${actualInBag}.00
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-white p-3 rounded-2xl border border-emerald-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-emerald-950 uppercase tracking-wider flex items-center gap-1.5">
+                    <Banknote className="w-4 h-4 text-emerald-700" />
+                    <span>Efectivo Contado que Quedó en el Cajón</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCopyExpectedInBag}
+                    className="text-[10px] text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-lg font-bold cursor-pointer transition-colors"
+                    title="Copiar monto esperado"
+                  >
+                    📋 Copiar lo Esperado (${expectedInBag})
+                  </button>
+                </div>
+
+                <div className="relative flex items-center">
+                  <span className="absolute left-3 text-xl font-black text-emerald-700 font-mono">$</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    id="remaining-cash-input"
+                    value={remainingCashInput}
+                    onChange={(e) => setRemainingCashInput(cleanAmountInput(e.target.value))}
+                    onFocus={(e) => e.target.select()}
+                    placeholder={expectedInBag > 0 ? expectedInBag.toString() : '0'}
+                    className="w-full pl-8 pr-3 py-2 bg-white rounded-xl text-xl sm:text-2xl font-black text-emerald-700 border-2 border-emerald-500 focus:border-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-300 font-mono shadow-2xs"
+                  />
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-1">
+                  <span className="text-[11px] text-emerald-900 font-medium">
+                    Tenía que haber en bolsita: <strong className="font-mono text-emerald-950 font-black">${expectedInBag}.00</strong>
+                  </span>
+
+                  {/* BOTÓN CONTEO FÁCIL PARA LO QUE QUEDÓ */}
+                  <button
+                    type="button"
+                    id="toggle-remaining-easy-count-btn"
+                    onClick={() => {
+                      playBeep(700, 'sine', 0.03);
+                      setShowRemainingCounter(prev => {
+                        const next = !prev;
+                        if (next) {
+                          const total = calculateDenominationsTotal(remainingDenominations);
+                          if (total > 0) {
+                            setRemainingCashInput(total.toString());
+                          }
+                        }
+                        return next;
+                      });
+                    }}
+                    className="w-full sm:w-auto px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900 text-white font-black text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm cursor-pointer transition-all active:scale-98"
+                  >
+                    <Coins className="w-4 h-4" />
+                    <span>
+                      {showRemainingCounter ? '▲ Ocultar Conteo Fácil' : '🔢 Conteo Fácil de Billetes y Monedas'}
+                    </span>
                   </button>
                 </div>
               </div>
 
-              {/* Quick Preset Buttons for common bakery expenses (Uber/Transporte, Prestamos, Alpura, Coca cola, Mantenimientos, Ahorro, Desayuno, otros) */}
-              <div className="space-y-1">
-                <span className="text-[10px] font-black uppercase tracking-wider text-rose-900">
-                  Botones Rápidos de Proveedores / Salidas:
-                </span>
-                <div className="flex flex-wrap gap-1.5">
-                  {COMMON_EXPENSE_PRESETS.map((preset, idx) => (
+              {/* PANEL DE CONTEO FÁCIL PARA LO QUE QUEDÓ */}
+              {showRemainingCounter && (
+                <CashDenominationSelector
+                  title="Conteo Fácil: Efectivo Contado que Quedó en el Cajón"
+                  subtitle="Suma los billetes y monedas que quedaron para la bolsita. Se acumula automáticamente en el efectivo contado."
+                  denominations={remainingDenominations}
+                  onChange={(updated, total) => {
+                    setRemainingDenominations(updated);
+                    setRemainingCashInput(total > 0 ? total.toString() : '0');
+                  }}
+                  autoTargetNotice="Acumulándose automáticamente en Efectivo Contado que Quedó en el Cajón"
+                  onlyBills={false}
+                  onApply={(total) => {
+                    setRemainingCashInput(total.toString());
+                    setShowRemainingCounter(false);
+                  }}
+                  onCancel={() => setShowRemainingCounter(false)}
+                />
+              )}
+            </div>
+
+            {/* ========================================================= */}
+            {/* 4. PASO 4: SE REGISTRAN LAS SALIDAS */}
+            {/* ========================================================= */}
+            <div className="bg-rose-50/70 rounded-3xl p-3.5 sm:p-4 border-2 border-rose-300 shadow-sm space-y-3">
+              <div className="flex items-center justify-between border-b border-rose-200 pb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-xl bg-rose-600 text-white flex items-center justify-center font-black text-sm shadow-xs">
+                    4
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-rose-950 leading-tight">
+                      Registrar Salidas / Gastos y Pagos a Proveedores
+                    </h3>
+                    <p className="text-[11px] text-rose-800 font-bold leading-none mt-0.5">
+                      Registra cualquier dinero pagado en efectivo de la caja durante este turno
+                    </p>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <span className="text-[10px] text-rose-700 font-bold block">Total Salidas:</span>
+                  <span className="text-base sm:text-lg font-black text-rose-700 font-mono">
+                    -${totalOutflows}.00
+                  </span>
+                </div>
+              </div>
+
+              {/* Botón para abrir formulario de salida y botones rápidos */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <button
+                  type="button"
+                  id="open-add-outflow-form-btn"
+                  onClick={() => setShowAddOutflowForm(prev => !prev)}
+                  className="bg-rose-600 hover:bg-rose-700 text-white font-black text-xs px-3.5 py-2 rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95 transition-all"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ Registrar Salida / Pago</span>
+                </button>
+
+                <div className="flex items-center gap-1 flex-wrap">
+                  <span className="text-[10px] font-bold text-slate-500">Rápidos:</span>
+                  {['Uber', 'Préstamo', 'Alpura', 'Coca-Cola', 'Harinera', 'Huevo'].map((concept) => (
                     <button
-                      key={idx}
+                      key={concept}
                       type="button"
                       onClick={() => {
-                        setNewConcept(preset.concept);
+                        setNewConcept(concept);
                         setShowAddOutflowForm(true);
-                        playBeep(520, 'sine', 0.04);
                       }}
-                      className="bg-white hover:bg-rose-100 text-rose-900 border border-rose-300 text-xs font-bold py-1 px-2.5 rounded-lg shadow-2xs transition-colors cursor-pointer active:scale-95"
+                      className="text-[10px] font-bold bg-white hover:bg-rose-100 text-rose-900 border border-rose-200 px-2 py-0.5 rounded-lg cursor-pointer"
                     >
-                      {preset.label}
+                      {concept}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Add Outflow Form */}
+              {/* Formulario para agregar salida */}
               {showAddOutflowForm && (
-                <form onSubmit={handleAddOutflow} className="bg-white rounded-2xl p-3.5 border border-rose-300 space-y-2.5 shadow-sm animate-in fade-in duration-150">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <form 
+                  onSubmit={handleAddOutflow}
+                  className="bg-white p-3.5 rounded-2xl border-2 border-rose-300 space-y-3 animate-in fade-in"
+                >
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                    <span className="text-xs font-black text-slate-900 uppercase">
+                      Nueva Salida de Dinero
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddOutflowForm(false)}
+                      className="text-slate-400 hover:text-slate-700 p-1"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <div>
-                      <label className="block text-[10px] font-black text-slate-600 uppercase mb-1">
-                        Concepto / Proveedor: *
+                      <label className="block text-[10.5px] font-black text-slate-700 uppercase mb-1">
+                        Concepto / Proveedor:
                       </label>
                       <input
                         type="text"
-                        id="outflow-concept-input"
-                        placeholder="Ej. Alpura, Coca cola, Uber..."
                         value={newConcept}
                         onChange={(e) => setNewConcept(e.target.value)}
+                        placeholder="Ej. Alpura, Harinera, Uber..."
                         required
-                        className="w-full bg-slate-50 px-3 py-2 rounded-xl text-xs font-bold border border-slate-300 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                        className="w-full bg-rose-50/40 px-3 py-1.5 rounded-xl text-xs font-bold border border-rose-300 focus:outline-none focus:ring-2 focus:ring-rose-500"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-black text-slate-600 uppercase mb-1">
-                        Monto a Descontar ($): *
+                      <label className="block text-[10.5px] font-black text-slate-700 uppercase mb-1">
+                        Monto a Pagar ($):
                       </label>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-400 text-sm">$</span>
+                      <div className="relative flex items-center">
+                        <span className="absolute left-3 font-black text-rose-600 font-mono">$</span>
                         <input
-                          type="number"
-                          step="1"
-                          id="outflow-amount-input"
-                          placeholder="0.00"
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
                           value={newAmount}
-                          onChange={(e) => setNewAmount(e.target.value)}
+                          onChange={(e) => setNewAmount(cleanAmountInput(e.target.value))}
+                          onFocus={(e) => e.target.select()}
+                          placeholder="0"
                           required
-                          className="w-full pl-7 pr-3 py-2 rounded-xl text-xs font-black text-rose-700 bg-slate-50 border border-slate-300 focus:outline-none focus:ring-2 focus:ring-rose-500 font-mono"
+                          className="w-full pl-7 pr-3 py-1.5 bg-rose-50/40 rounded-xl text-sm font-black text-rose-700 border border-rose-300 font-mono focus:outline-none focus:ring-2 focus:ring-rose-500"
                         />
                       </div>
                     </div>
-                  </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div>
+                      <label className="block text-[10.5px] font-black text-slate-700 uppercase mb-1">
+                        ¿Quién recibió? (Opcional):
+                      </label>
                       <input
                         type="text"
-                        placeholder="Entregado a / Recibió (Ej. Chofer, Mary, Paty...)"
                         value={newRecipient}
                         onChange={(e) => setNewRecipient(e.target.value)}
-                        className="w-full bg-slate-50 px-3 py-1.5 rounded-xl text-xs border border-slate-200 focus:outline-none focus:ring-1 focus:ring-rose-400"
+                        placeholder="Ej. Don Pancho, Repartidor..."
+                        className="w-full bg-slate-50 px-3 py-1.5 rounded-xl text-xs border border-slate-300 focus:outline-none focus:ring-2 focus:ring-rose-500"
                       />
                     </div>
+
                     <div>
+                      <label className="block text-[10.5px] font-black text-slate-700 uppercase mb-1">
+                        Nota / Detalle (Opcional):
+                      </label>
                       <input
                         type="text"
-                        placeholder="Nota adicional o # de folio/remisión"
                         value={newNotes}
                         onChange={(e) => setNewNotes(e.target.value)}
-                        className="w-full bg-slate-50 px-3 py-1.5 rounded-xl text-xs border border-slate-200 focus:outline-none focus:ring-1 focus:ring-rose-400"
+                        placeholder="Ej. 2 cajas de leche"
+                        className="w-full bg-slate-50 px-3 py-1.5 rounded-xl text-xs border border-slate-300 focus:outline-none focus:ring-2 focus:ring-rose-500"
                       />
                     </div>
                   </div>
@@ -959,502 +1017,318 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setShowAddOutflowForm(false)}
-                      className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer"
+                      className="px-3 py-1.5 bg-slate-100 text-slate-700 font-bold text-xs rounded-xl cursor-pointer"
                     >
                       Cancelar
                     </button>
                     <button
                       type="submit"
-                      id="save-outflow-btn"
-                      className="bg-rose-600 hover:bg-rose-700 text-white font-black text-xs px-4 py-1.5 rounded-xl flex items-center gap-1 shadow-md cursor-pointer"
+                      className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-xl flex items-center gap-1 cursor-pointer shadow-sm"
                     >
                       <Check className="w-3.5 h-3.5" />
-                      <span>Guardar y Descontar</span>
+                      <span>Guardar Salida</span>
                     </button>
                   </div>
                 </form>
               )}
 
-              {/* List of Outflows registered (DESGLOSE COMPLETO) */}
-              <div className="space-y-1.5 max-h-56 overflow-y-auto">
+              {/* Lista de salidas registradas */}
+              <div className="space-y-1.5">
                 {outflows.length === 0 ? (
-                  <div className="text-center py-3.5 bg-white/60 rounded-xl border border-rose-100 text-xs text-rose-800/80 italic font-medium px-4">
-                    ✨ No hay salidas registradas para {currentShiftCode === 'turno1' ? 'el Turno 1 (Mañana)' : currentShiftCode === 'turno2' ? 'el Turno 2 (Tarde)' : 'el día de hoy'}. El corte inicia limpio en cada turno y día.
+                  <div className="bg-white/80 p-3 rounded-2xl border border-rose-200 text-center text-xs text-slate-500 italic">
+                    Sin salidas registradas en este turno
                   </div>
                 ) : (
-                  outflows.map((item, idx) => (
-                    <div
-                      key={item.id}
-                      className="bg-white rounded-xl p-2.5 border border-rose-200 flex items-center justify-between gap-2 shadow-2xs hover:border-rose-300 transition-colors"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-6 h-6 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center font-black text-xs shrink-0">
-                          {idx + 1}
-                        </div>
-                        <div>
-                          <div className="text-xs font-black text-slate-900 leading-tight">
-                            {item.concept}
-                          </div>
-                          <div className="text-[10px] text-slate-500 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 mt-0.5">
-                            <span>🕒 {item.time}</span>
-                            {item.recipient && <span className="text-slate-700 font-semibold">👤 {item.recipient}</span>}
-                            {item.notes && <span className="text-slate-600 italic">📝 {item.notes}</span>}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-sm font-black text-rose-700 font-mono">
-                          -${item.amount}.00
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveOutflow(item.id)}
-                          className="text-slate-400 hover:text-rose-600 p-1 rounded-lg hover:bg-rose-50 cursor-pointer"
-                          title="Eliminar salida"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {/* Subtotal Outflows Banner */}
-              {outflows.length > 0 && (
-                <div className="bg-rose-100/90 text-rose-950 p-2.5 rounded-xl flex items-center justify-between text-xs font-black border border-rose-300">
-                  <span>Total Salidas / Pagos Proveedores ({outflows.length}):</span>
-                  <span className="text-sm text-rose-700 font-mono font-black">-${totalOutflows}.00</span>
-                </div>
-              )}
-            </div>
-
-            {/* Section 4: Fondo Inicial, Fondo Siguiente Turno & Balance Matemático Final de Caja */}
-            <div className="bg-gradient-to-br from-amber-500/10 via-amber-100/40 to-emerald-50 rounded-3xl p-4 sm:p-5 border-2 border-amber-300 space-y-4">
-              <div className="border-b border-amber-200/80 pb-2.5">
-                <h3 className="text-sm font-black text-slate-900 flex items-center gap-1.5">
-                  <Calculator className="w-4 h-4 text-[#D95D39]" />
-                  <span>Balance Final de Efectivo en Caja & Fondos de Turno</span>
-                </h3>
-                <p className="text-[11px] text-slate-600">
-                  Cálculo automático: (Fondo Inicial + Efectivo Cobrado) - Salidas - Fondo para el Siguiente Turno
-                </p>
-              </div>
-
-              {/* Controles de Fondos: Fondo Inicial Recibido y Fondo que se Deja para Sig. Turno */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {/* 1. Fondo Inicial Recibido */}
-                <div className="bg-white p-3 rounded-2xl border-2 border-amber-300 shadow-2xs space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-xs font-black text-slate-800 block">Fondo Inicial Recibido:</span>
-                      <span className="text-[10px] text-slate-500 font-bold">Con el que inició este turno</span>
-                    </div>
-                    <div className="flex items-center gap-1 bg-amber-50 px-2.5 py-1 rounded-xl border border-amber-300">
-                      <span className="text-sm font-black text-amber-600 font-mono">$</span>
-                      <input
-                        id="initial-cash-input"
-                        type="number"
-                        step="50"
-                        min="0"
-                        value={initialCash}
-                        onChange={(e) => handleUpdateInitialCash(parseFloat(e.target.value) || 0)}
-                        className="w-20 text-sm font-black text-slate-900 focus:outline-none border-b-2 border-amber-500 font-mono text-right bg-transparent"
-                      />
-                      <span className="text-xs font-bold text-slate-400 font-mono">.00</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-1 pt-1 justify-end">
-                    <button
-                      type="button"
-                      onClick={() => handleUpdateInitialCash(initialCash - 100)}
-                      className="px-2 py-1 bg-slate-50 hover:bg-rose-50 border border-slate-300 hover:border-rose-300 text-rose-700 font-black text-[11px] rounded-lg shadow-2xs cursor-pointer active:scale-95"
-                      title="Restar 100"
-                    >
-                      -100
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleUpdateInitialCash(initialCash + 100)}
-                      className="px-2 py-1 bg-slate-50 hover:bg-emerald-50 border border-slate-300 hover:border-emerald-300 text-emerald-700 font-black text-[11px] rounded-lg shadow-2xs cursor-pointer active:scale-95"
-                      title="Sumar 100"
-                    >
-                      +100
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleUpdateInitialCash(1000)}
-                      className="px-2 py-1 bg-amber-100 hover:bg-amber-200 border border-amber-300 text-amber-950 font-black text-[11px] rounded-lg shadow-2xs cursor-pointer active:scale-95"
-                      title="Restablecer a $1,000"
-                    >
-                      $1,000 (Default)
-                    </button>
-                  </div>
-                </div>
-
-                {/* 2. Fondo que se Deja para el Siguiente Turno */}
-                <div className="bg-indigo-50/50 p-3 rounded-2xl border-2 border-indigo-300 shadow-2xs space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-xs font-black text-indigo-950 block">Se Deja para Siguiente Turno:</span>
-                      <span className="text-[10px] text-indigo-700 font-bold">Fondo que se queda en cajón para cambio</span>
-                    </div>
-                    <div className="flex items-center gap-1 bg-white px-2.5 py-1 rounded-xl border border-indigo-300">
-                      <span className="text-sm font-black text-indigo-600 font-mono">$</span>
-                      <input
-                        id="next-shift-cash-input"
-                        type="number"
-                        step="50"
-                        min="0"
-                        value={nextShiftCash}
-                        onChange={(e) => handleUpdateNextShiftCash(parseFloat(e.target.value) || 0)}
-                        className="w-20 text-sm font-black text-slate-900 focus:outline-none border-b-2 border-indigo-500 font-mono text-right bg-transparent"
-                      />
-                      <span className="text-xs font-bold text-slate-400 font-mono">.00</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-1 pt-1 justify-end flex-wrap">
-                    <button
-                      type="button"
-                      onClick={() => handleUpdateNextShiftCash(nextShiftCash - 100)}
-                      className="px-2 py-1 bg-white hover:bg-rose-50 border border-indigo-200 text-rose-700 font-black text-[11px] rounded-lg shadow-2xs cursor-pointer active:scale-95"
-                      title="Restar 100"
-                    >
-                      -100
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleUpdateNextShiftCash(nextShiftCash + 100)}
-                      className="px-2 py-1 bg-white hover:bg-emerald-50 border border-indigo-200 text-emerald-700 font-black text-[11px] rounded-lg shadow-2xs cursor-pointer active:scale-95"
-                      title="Sumar 100"
-                    >
-                      +100
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleUpdateNextShiftCash(1000)}
-                      className="px-2 py-1 bg-indigo-100 hover:bg-indigo-200 border border-indigo-300 text-indigo-950 font-black text-[11px] rounded-lg shadow-2xs cursor-pointer active:scale-95"
-                      title="Dejar $1,000 en caja"
-                    >
-                      $1,000 (Normal)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleUpdateNextShiftCash(500)}
-                      className="px-2 py-1 bg-white hover:bg-indigo-50 border border-indigo-200 text-indigo-900 font-black text-[11px] rounded-lg shadow-2xs cursor-pointer active:scale-95"
-                      title="Dejar $500"
-                    >
-                      $500
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleUpdateNextShiftCash(0)}
-                      className="px-2 py-1 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 font-black text-[11px] rounded-lg shadow-2xs cursor-pointer active:scale-95"
-                      title="Dejar $0 (No dejar fondo)"
-                    >
-                      $0
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Math Formula Breakdown */}
-              <div className="space-y-1.5 text-xs pt-1">
-                <div className="flex justify-between items-center text-slate-700">
-                  <span>(+) Fondo Inicial de Caja (Recibido al abrir):</span>
-                  <span className="font-bold font-mono">${initialCash}.00</span>
-                </div>
-                <div className="flex justify-between items-center text-emerald-800">
-                  <span>(+) Total Ventas en Efectivo Hoy (Cuadrado):</span>
-                  <span className="font-bold font-mono">+${effectiveCashSales}.00</span>
-                </div>
-                <div className="flex justify-between items-center text-rose-700">
-                  <span>(-) Total Salidas a Proveedores / Gastos:</span>
-                  <span className="font-bold font-mono">-${totalOutflows}.00</span>
-                </div>
-                <div className="flex justify-between items-center text-slate-800 pt-1 border-t border-dashed border-amber-300 font-extrabold">
-                  <span>(=) Total Efectivo que DEBE HABER (Sistema):</span>
-                  <span className="font-mono text-sm font-black bg-amber-100/70 px-2 py-0.5 rounded border border-amber-300">${expectedCashInDrawer}.00</span>
-                </div>
-
-                {/* MODIFICACIÓN SOLICITADA: Entrada Manual de Efectivo Real y Cuadre de Diferencia */}
-                <div className="mt-3 p-3.5 bg-white rounded-2xl border-2 border-[#D95D39]/40 shadow-xs space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 pb-2 border-b border-slate-100">
-                    <div>
-                      <div className="flex items-center gap-1.5 text-xs font-black text-slate-900">
-                        <Banknote className="w-4 h-4 text-emerald-600" />
-                        <span>EFECTIVO FÍSICO REAL EN CAJA (CONTEO MANUAL)</span>
-                      </div>
-                      <p className="text-[10px] text-slate-500 font-bold">
-                        Escribe cuánto dinero contaron físicamente para calcular sobrante o faltante
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          playBeep(650, 'sine', 0.03);
-                          setIsManualCashActive(true);
-                          setManualCashInput(expectedCashInDrawer.toString());
-                        }}
-                        className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-[10px] font-black cursor-pointer shadow-2xs"
-                        title="Copiar exactamente lo que marca el sistema"
+                  <div className="bg-white rounded-2xl border border-rose-200 p-2 space-y-1 max-h-36 overflow-y-auto">
+                    {outflows.map((outflow) => (
+                      <div 
+                        key={outflow.id}
+                        className="flex items-center justify-between p-2 rounded-xl bg-rose-50/50 hover:bg-rose-100/60 transition-colors border border-rose-100 text-xs"
                       >
-                        📋 Copiar Esperado (${expectedCashInDrawer})
-                      </button>
-                      {hasEnteredActualCash && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            playBeep(450, 'sine', 0.03);
-                            setManualCashInput('');
-                            setIsManualCashActive(false);
-                            setCashDenominations({ 500: 0, 200: 0, 100: 0, 50: 0, 20: 0, 10: 0, 5: 0, 2: 0, 1: 0 });
-                          }}
-                          className="px-2 py-1 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 border border-slate-300 rounded-lg text-[10px] font-bold cursor-pointer"
-                        >
-                          Limpiar
-                        </button>
-                      )}
-                    </div>
-                  </div>
+                        <div className="space-y-0.5 truncate pr-2">
+                          <div className="font-black text-slate-900 truncate">
+                            • {outflow.concept}
+                          </div>
+                          <div className="text-[10px] text-slate-500 flex gap-2">
+                            {outflow.time && <span>🕒 {outflow.time}</span>}
+                            {outflow.recipient && <span>👤 {outflow.recipient}</span>}
+                            {outflow.notes && <span>📝 {outflow.notes}</span>}
+                          </div>
+                        </div>
 
-                  {/* Input Principal de Efectivo Manual */}
-                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
-                    <div className="sm:col-span-7">
-                      <label className="block text-[10px] font-black text-slate-600 uppercase mb-1">
-                        Total de dinero contado en mano / cajón:
-                      </label>
-                      <div className="relative flex items-center">
-                        <span className="absolute left-3 font-black text-emerald-600 text-lg sm:text-xl font-mono">$</span>
-                        <input
-                          type="number"
-                          id="shift-actual-cash-input"
-                          step="1"
-                          min="0"
-                          placeholder={`Ej. ${expectedCashInDrawer}`}
-                          value={isManualCashActive ? manualCashInput : (actualCashCounted > 0 ? actualCashCounted : '')}
-                          onChange={(e) => {
-                            setIsManualCashActive(true);
-                            setManualCashInput(e.target.value);
-                          }}
-                          className="w-full pl-8 pr-3 py-2 bg-emerald-50/40 focus:bg-white rounded-xl text-lg sm:text-xl font-black text-slate-900 border-2 border-emerald-400 focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-400 font-mono shadow-2xs transition-colors"
-                        />
-                      </div>
-
-                      {/* Botones rápidos de ajuste */}
-                      <div className="flex items-center gap-1 mt-1.5 flex-wrap">
-                        <span className="text-[9.5px] font-bold text-slate-400 mr-1">Rápidos:</span>
-                        {[50, 100, 200, 500].map((addAmount) => (
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="font-mono font-black text-rose-700 text-sm">
+                            -${outflow.amount}.00
+                          </span>
                           <button
-                            key={addAmount}
                             type="button"
-                            onClick={() => {
-                              playBeep(700, 'sine', 0.02);
-                              const currentVal = parseFloat(manualCashInput) || 0;
-                              setManualCashInput((currentVal + addAmount).toString());
-                              setIsManualCashActive(true);
-                            }}
-                            className="px-1.5 py-0.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 font-black text-[10px] rounded cursor-pointer"
+                            onClick={() => handleDeleteOutflow(outflow.id)}
+                            className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer"
+                            title="Eliminar salida"
                           >
-                            +{addAmount}
+                            <Trash2 className="w-4 h-4" />
                           </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Tarjeta de Diferencia / Cuadre */}
-                    <div className="sm:col-span-5">
-                      {hasEnteredActualCash ? (
-                        <div className={`p-3 rounded-xl border-2 transition-all ${
-                          cashDifference === 0
-                            ? 'bg-emerald-100/90 border-emerald-500 text-emerald-950'
-                            : cashDifference > 0
-                              ? 'bg-teal-50 border-teal-400 text-teal-950 ring-2 ring-teal-300/40'
-                              : 'bg-rose-100/90 border-rose-500 text-rose-950 ring-2 ring-rose-300/40'
-                        }`}>
-                          <div className="text-[10px] font-black uppercase tracking-wider flex items-center justify-between">
-                            <span>{cashDifference === 0 ? '✅ CAJA CUADRADA' : cashDifference > 0 ? '🟢 SOBRANTE EN CAJA' : '🔴 FALTANTE EN CAJA'}</span>
-                            <span className="text-[9px] px-1.5 py-0.2 rounded font-black bg-white/70">
-                              {cashDifference === 0 ? 'Exacto' : cashDifference > 0 ? 'Sobra' : 'Falta'}
-                            </span>
-                          </div>
-
-                          <div className="text-xl sm:text-2xl font-black font-mono mt-1 tracking-tight">
-                            {cashDifference === 0 
-                              ? '$0.00' 
-                              : cashDifference > 0 
-                                ? `+$${cashDifference}.00` 
-                                : `-$${Math.abs(cashDifference)}.00`}
-                          </div>
-
-                          <div className="text-[9.5px] mt-1 font-bold leading-tight">
-                            {cashDifference === 0 && '¡Perfecto! El dinero contado coincide al 100% con el sistema.'}
-                            {cashDifference > 0 && `Hay $${cashDifference}.00 de más en el cajón respecto a las ventas del sistema.`}
-                            {cashDifference < 0 && `Faltan $${Math.abs(cashDifference)}.00 en el cajón respecto a lo que marca el sistema.`}
-                          </div>
                         </div>
-                      ) : (
-                        <div className="p-3 bg-slate-50 rounded-xl border border-dashed border-slate-300 text-slate-500 text-[11px] leading-snug">
-                          <span className="font-bold block text-slate-700">⏳ Sin conteo manual aún</span>
-                          Escribe el monto en el recuadro para ver la diferencia (sobrante o faltante).
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex justify-between items-center text-indigo-950 font-black bg-indigo-100/70 px-2.5 py-1.5 rounded-xl border border-indigo-200">
-                  <span className="flex items-center gap-1.5">
-                    <span>(-) Se DEJA en Caja para Siguiente Turno (Descuento):</span>
-                    <span className="text-[10px] font-bold text-indigo-700 bg-white px-1.5 py-0.5 rounded-md">Fondo cambio</span>
-                  </span>
-                  <span className="font-mono text-sm text-indigo-900 font-black">-${nextShiftCash}.00</span>
-                </div>
-
-                {/* Big Result Box */}
-                <div className="pt-2 border-t-2 border-amber-400 flex flex-col sm:flex-row items-center justify-between bg-gradient-to-r from-white via-amber-50/50 to-emerald-50 rounded-2xl p-4 shadow-sm border border-amber-300 gap-3">
-                  <div>
-                    <span className="text-xs sm:text-sm font-black uppercase tracking-wider text-slate-900 block">
-                      CORTE COLOCADO EN BOLSITA:
-                    </span>
-                    <span className="text-[11px] text-slate-600 block mt-0.5">
-                      {hasEnteredActualCash ? (
-                        <>
-                          (Basado en efectivo real contado: <strong className="text-slate-900 font-mono">${effectiveActualCash}.00</strong> menos fondo sig. turno <strong className="text-indigo-900 font-mono">${nextShiftCash}.00</strong>)
-                        </>
-                      ) : (
-                        <>
-                          (Dinero que se saca para el sobre o entrega al patrón. En el cajón se quedan <strong className="text-indigo-900 font-mono">${nextShiftCash}.00</strong>)
-                        </>
-                      )}
-                    </span>
-                    {hasEnteredActualCash && cashDifference !== 0 && (
-                      <span className={`text-[10px] font-black inline-block mt-1 px-2 py-0.5 rounded ${
-                        cashDifference > 0 ? 'bg-teal-100 text-teal-900' : 'bg-rose-100 text-rose-900'
-                      }`}>
-                        {cashDifference > 0 ? `Incluye sobrante de +$${cashDifference}.00` : `Afectado por faltante de -$${Math.abs(cashDifference)}.00`}
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-right shrink-0">
-                    <div className="text-3xl sm:text-4xl font-black text-emerald-700 font-mono tracking-tight">
-                      ${hasEnteredActualCash ? actualCashToDeliver : cashToDeliver}.00
-                    </div>
-                    <span className="text-[10px] font-bold text-slate-500 block">
-                      Fondo en cajón: ${nextShiftCash}.00
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Section 5: Optional Arqueo / Cash Denominations Count */}
-            <div className="border border-slate-200 rounded-2xl p-3 bg-slate-50/60">
-              <button
-                type="button"
-                onClick={() => setShowCashBreakdown(prev => !prev)}
-                className="w-full flex items-center justify-between text-xs font-black text-slate-700 cursor-pointer"
-              >
-                <div className="flex items-center gap-1.5">
-                  <Coins className="w-4 h-4 text-amber-600" />
-                  <span>¿Deseas desglosar billete por billete y monedas? (Arqueo Detallado Opcional)</span>
-                </div>
-                <span className="text-slate-400 text-xs">{showCashBreakdown ? '▲ Ocultar' : '▼ Mostrar Conteo'}</span>
-              </button>
-
-              {showCashBreakdown && (
-                <div className="mt-3 space-y-3 pt-2 border-t border-slate-200 animate-in fade-in">
-                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
-                    {[500, 200, 100, 50, 20, 10, 5, 2, 1].map((denom) => (
-                      <div key={denom} className="bg-white p-2 rounded-xl border border-slate-200 text-center shadow-2xs">
-                        <span className="text-[10px] font-black text-slate-500 block">${denom}</span>
-                        <input
-                          type="number"
-                          min="0"
-                          placeholder="0"
-                          value={cashDenominations[denom] || ''}
-                          onChange={(e) => {
-                            const val = parseInt(e.target.value, 10) || 0;
-                            const updated = { ...cashDenominations, [denom]: val };
-                            setCashDenominations(updated);
-                            const totalDenom = Object.entries(updated).reduce((s, [d, c]) => s + (Number(d) * (Number(c) || 0)), 0);
-                            setIsManualCashActive(true);
-                            setManualCashInput(totalDenom.toString());
-                          }}
-                          className="w-full text-center text-xs font-black text-slate-900 border border-slate-300 rounded py-1 mt-1 focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono"
-                        />
                       </div>
                     ))}
                   </div>
+                )}
+              </div>
+            </div>
 
-                  {actualCashCounted > 0 && (
-                    <div className="p-3 bg-white rounded-xl border border-amber-200 space-y-2 text-xs font-bold">
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pb-1 border-b border-slate-100">
-                        <div>
-                          <span className="text-slate-500 text-[10px] block">Efectivo Contado en Cajón:</span>
-                          <strong className="text-slate-900 font-mono text-sm">${actualCashCounted}.00</strong>
-                        </div>
-                        <div>
-                          <span className="text-indigo-600 text-[10px] block">Se Deja para Sig. Turno:</span>
-                          <strong className="text-indigo-700 font-mono text-sm">-${nextShiftCash}.00</strong>
-                        </div>
-                        <div>
-                          <span className="text-emerald-700 text-[10px] block">Efectivo Real a Retirar:</span>
-                          <strong className="text-emerald-700 font-mono text-sm">${actualCashToDeliver}.00</strong>
-                        </div>
-                      </div>
+            {/* ========================================================= */}
+            {/* CÁLCULO CONFORME A LAS VENTAS: CUADRE DE BOLSITA (SOBRANTE O FALTANTE) */}
+            {/* ========================================================= */}
+            <div className={`rounded-3xl p-4 border-2 shadow-sm space-y-3.5 ${
+              bagDifference === 0
+                ? 'bg-emerald-50/90 border-emerald-400'
+                : bagDifference > 0
+                  ? 'bg-teal-50/90 border-teal-400'
+                  : 'bg-rose-50/90 border-rose-400'
+            }`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-2.5 border-slate-200/80">
+                <div className="flex items-center gap-2">
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-sm text-white shadow-xs ${
+                    bagDifference === 0 ? 'bg-emerald-600' : bagDifference > 0 ? 'bg-teal-600' : 'bg-rose-600'
+                  }`}>
+                    ⚖️
+                  </div>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-black text-slate-900 leading-tight uppercase">
+                      Cruce y Cuadre de la Bolsita: Tenía que Ponerse vs Realmente Quedó
+                    </h3>
+                    <p className="text-[11px] text-slate-600 font-bold leading-none mt-0.5">
+                      Cálculo cruzado entre el efectivo que debía guardarse conforme a ventas/salidas y el dinero físico que realmente quedó
+                    </p>
+                  </div>
+                </div>
 
-                      <div className="flex justify-between items-center pt-1 text-xs">
-                        <span className="text-slate-700">Diferencia de Cajón vs Esperado:</span>
-                        <strong className={`font-mono text-sm ${cashDifference >= 0 ? (cashDifference === 0 ? 'text-emerald-600' : 'text-teal-600') : 'text-rose-600'}`}>
-                          {cashDifference === 0 
-                            ? '$0.00 (Caja Cuadrada)' 
-                            : cashDifference > 0 
-                              ? `+$${cashDifference}.00 (Sobrante)` 
-                              : `-$${Math.abs(cashDifference)}.00 (Faltante)`}
-                        </strong>
-                      </div>
+                {/* Badge de Estado de la Bolsita */}
+                <div className={`px-3 py-1.5 rounded-xl font-black text-xs sm:text-sm border shadow-2xs shrink-0 self-start sm:self-auto ${
+                  bagDifference === 0
+                    ? 'bg-emerald-600 text-white border-emerald-700'
+                    : bagDifference > 0
+                      ? 'bg-teal-600 text-white border-teal-700'
+                      : 'bg-rose-600 text-white border-rose-700'
+                }`}>
+                  {bagDifference === 0 
+                    ? '✅ BOLSITA CUADRADA EXACTA' 
+                    : bagDifference > 0 
+                      ? `🟢 SOBRANTE EN BOLSITA: +$${bagDifference}.00` 
+                      : `🔴 FALTANTE EN BOLSITA: -$${Math.abs(bagDifference)}.00`}
+                </div>
+              </div>
+
+              {/* 3 Tarjetas Comparativas: 1. Tenía que Ponerse | 2. Realmente Quedó | 3. Diferencia Cruzada */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                {/* 1. Tenía que ponerse en bolsita */}
+                <div className="bg-white p-3 rounded-2xl border-2 border-blue-300 shadow-2xs space-y-1">
+                  <span className="text-[10.5px] font-black text-blue-900 uppercase tracking-wider block">
+                    1. Tenía que Ponerse en Bolsita:
+                  </span>
+                  <div className="text-xl sm:text-2xl font-black text-blue-900 font-mono">
+                    ${expectedInBag}.00
+                  </div>
+                  <div className="text-[10px] text-slate-600 font-bold space-y-0.5 pt-1 border-t border-slate-100">
+                    <div className="flex justify-between">
+                      <span>• Venta efec. sistema:</span>
+                      <span className="font-mono font-bold text-emerald-800">${systemCashSalesExpected}.00</span>
                     </div>
-                  )}
+                    <div className="flex justify-between">
+                      <span>• Salidas pagadas:</span>
+                      <span className="font-mono font-bold text-rose-700">-${totalOutflows}.00</span>
+                    </div>
+                    <div className="flex justify-between text-slate-400">
+                      <span>• Se dejan en caja:</span>
+                      <span className="font-mono">${nextShiftCash}.00</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Realmente quedó contado en bolsita */}
+                <div className="bg-white p-3 rounded-2xl border-2 border-emerald-400 shadow-2xs space-y-1">
+                  <span className="text-[10.5px] font-black text-emerald-950 uppercase tracking-wider block">
+                    2. Realmente Quedó (Contado):
+                  </span>
+                  <div className="text-xl sm:text-2xl font-black text-emerald-700 font-mono">
+                    ${actualInBag}.00
+                  </div>
+                  <div className="text-[10px] text-slate-600 font-bold space-y-0.5 pt-1 border-t border-slate-100">
+                    <div className="flex justify-between">
+                      <span>• Contado en Paso 3:</span>
+                      <span className="font-mono font-bold text-emerald-800">${actualInBag}.00</span>
+                    </div>
+                    <div className="flex justify-between text-slate-400">
+                      <span>• En caja queda cambio:</span>
+                      <span className="font-mono">${nextShiftCash}.00</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Diferencia en bolsita */}
+                <div className={`p-3 rounded-2xl border-2 shadow-2xs space-y-1 ${
+                  bagDifference === 0
+                    ? 'bg-emerald-100/80 border-emerald-400 text-emerald-950'
+                    : bagDifference > 0
+                      ? 'bg-teal-100/80 border-teal-400 text-teal-950'
+                      : 'bg-rose-100/80 border-rose-400 text-rose-950'
+                }`}>
+                  <span className="text-[10.5px] font-black uppercase tracking-wider block opacity-90">
+                    3. Cruce (Diferencia Bolsita):
+                  </span>
+                  <div className="text-xl sm:text-2xl font-black font-mono">
+                    {bagDifference === 0 
+                      ? '$0.00' 
+                      : `${bagDifference > 0 ? '+' : '-'}$${Math.abs(bagDifference)}.00`}
+                  </div>
+                  <div className="text-[10.5px] font-black leading-tight pt-1">
+                    {bagDifference === 0 && '✅ Efectivo en bolsita coincide exacto con lo que tenía que haber'}
+                    {bagDifference > 0 && `🟢 Sobran $${bagDifference}.00 en la bolsita`}
+                    {bagDifference < 0 && `🔴 Faltan $${Math.abs(bagDifference)}.00 en la bolsita`}
+                  </div>
+                </div>
+              </div>
+
+              {/* Visualización de la resta matemática */}
+              <div className="bg-white/80 p-2.5 rounded-xl border border-slate-200 text-xs text-slate-700 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 font-bold flex-wrap">
+                  <span className="text-slate-500 font-medium">Cruce Matemático:</span>
+                  <span className="bg-emerald-100 text-emerald-900 px-1.5 py-0.5 rounded font-mono text-[11px] font-black">
+                    Realmente Quedó (${actualInBag}.00)
+                  </span>
+                  <span>−</span>
+                  <span className="bg-blue-100 text-blue-900 px-1.5 py-0.5 rounded font-mono text-[11px] font-black">
+                    Tenía que Ponerse (${expectedInBag}.00)
+                  </span>
+                  <span>=</span>
+                  <span className={`px-2 py-0.5 rounded font-mono text-xs font-black ${
+                    bagDifference === 0 ? 'bg-emerald-200 text-emerald-950' : bagDifference > 0 ? 'bg-teal-200 text-teal-950' : 'bg-rose-200 text-rose-950'
+                  }`}>
+                    {bagDifference > 0 ? `+` : ''}${bagDifference}.00
+                  </span>
+                </div>
+
+                <div className="font-black text-[11px]">
+                  {bagDifference === 0 && '✅ Bolsita entregada con cuadre exacto'}
+                  {bagDifference > 0 && '🟢 Hubo un sobrante en la bolsita'}
+                  {bagDifference < 0 && '🔴 Hubo un faltante en la bolsita'}
+                </div>
+              </div>
+            </div>
+
+            {/* ========================================================= */}
+            {/* HASTA ABAJO: DESGLOSE DE LO VENDIDO (PAN VS NO PAN) */}
+            {/* ========================================================= */}
+            <div className="bg-sky-50/70 rounded-3xl p-3.5 sm:p-4 border-2 border-sky-300 shadow-sm space-y-3">
+              <div className="flex items-center justify-between border-b border-sky-200 pb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-xl bg-sky-600 text-white flex items-center justify-center font-black text-sm shadow-xs">
+                    📊
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-sky-950 leading-tight">
+                      Desglose de lo Vendido (Pan vs No Pan)
+                    </h3>
+                    <p className="text-[11px] text-sky-800 font-bold leading-none mt-0.5">
+                      Comparativa de panadería tradicional vs abarrotes, lácteos y paletas
+                    </p>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <span className="text-[10px] text-sky-700 font-bold block">Total No Pan:</span>
+                  <span className="text-base sm:text-lg font-black text-sky-800 font-mono">
+                    ${nonBreadTotal}.00
+                  </span>
+                </div>
+              </div>
+
+              {/* Tarjetas comparativas: Pan vs No Pan */}
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="bg-white p-3 rounded-2xl border border-amber-300 shadow-2xs">
+                  <div className="flex items-center gap-1.5 text-xs font-black text-amber-900 uppercase">
+                    <Wheat className="w-4 h-4 text-amber-700" />
+                    <span>Venta de Pan</span>
+                  </div>
+                  <div className="text-lg sm:text-xl font-black text-amber-700 font-mono mt-1">
+                    ${breadTotal}.00
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-bold block">
+                    {breadPieces} piezas de pan
+                  </span>
+                </div>
+
+                <div className="bg-white p-3 rounded-2xl border border-sky-300 shadow-2xs">
+                  <div className="flex items-center gap-1.5 text-xs font-black text-sky-950 uppercase">
+                    <ShoppingBag className="w-4 h-4 text-sky-600" />
+                    <span>Venta de No Pan</span>
+                  </div>
+                  <div className="text-lg sm:text-xl font-black text-sky-700 font-mono mt-1">
+                    ${nonBreadTotal}.00
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-bold block">
+                    {nonBreadPieces} artículos vendidos
+                  </span>
+                </div>
+              </div>
+
+              {/* Lista detallada de productos No Pan registrados */}
+              {nonBreadItemsList && nonBreadItemsList.length > 0 ? (
+                <div className="bg-white rounded-2xl p-3 border border-sky-200 space-y-2">
+                  <span className="text-[11px] font-black text-slate-700 uppercase tracking-wider block">
+                    Detalle de Artículos No Pan Vendidos:
+                  </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-32 overflow-y-auto">
+                    {nonBreadItemsList.map((item, idx) => (
+                      <div 
+                        key={idx}
+                        className="flex items-center justify-between p-1.5 px-2 bg-sky-50/50 rounded-xl border border-sky-100 text-xs"
+                      >
+                        <span className="truncate font-bold text-slate-800 pr-1">
+                          • {item.name} ({item.quantity} pz)
+                        </span>
+                        <span className="font-mono font-black text-sky-800 shrink-0">
+                          ${item.total}.00
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-white/80 p-2.5 rounded-2xl border border-sky-200 text-center text-xs text-slate-500 italic">
+                  No hubo productos de no pan registrados con botón especial en este turno
                 </div>
               )}
             </div>
 
-            {/* Section 6: Observaciones */}
-            <div>
-              <label className="block text-[11px] font-black text-slate-600 uppercase mb-1">
-                Observaciones / Notas del Turno:
+            {/* SECCIÓN 5: OBSERVACIONES O NOTAS ADICIONALES */}
+            <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200 space-y-1">
+              <label className="block text-[11px] font-black text-slate-600 uppercase">
+                Observaciones / Notas del Turno (Opcional):
               </label>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Escribe cualquier detalle del turno (ej. faltó cambio en la mañana, billete roto, etc.)"
+                placeholder="Escribe cualquier detalle del turno (ej. billete roto, pago pendiente, etc.)"
                 rows={2}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#D95D39]"
+                className="w-full bg-white border border-slate-300 rounded-xl p-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
               />
             </div>
           </div>
 
-          {/* Modal Footer / Action Buttons */}
-          <div className="bg-slate-100 p-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
+          {/* BOTONES DE ACCIÓN (PIE DEL MODAL) */}
+          <div className="bg-slate-100 p-3 sm:p-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-2.5 shrink-0">
             <div className="flex items-center gap-2 w-full sm:w-auto">
-              {/* WhatsApp Share */}
               <button
                 type="button"
                 id="shift-whatsapp-btn"
                 onClick={handleSendWhatsApp}
-                className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs py-2.5 px-3.5 rounded-xl flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
+                className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs py-2.5 px-3.5 rounded-xl flex items-center justify-center gap-1.5 shadow-xs cursor-pointer active:scale-95 transition-all"
               >
                 <MessageCircle className="w-4 h-4" />
                 <span>Enviar WhatsApp</span>
               </button>
 
-              {/* Previo Ticket */}
               <button
                 type="button"
                 id="shift-preview-ticket-btn"
@@ -1466,12 +1340,11 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
               </button>
             </div>
 
-            {/* Print & Save Final Cut Button */}
             <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-200 transition-colors cursor-pointer"
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
               >
                 Cerrar
               </button>
@@ -1490,7 +1363,7 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
         </div>
       </div>
 
-      {/* Full Screen / Thermal Ticket Preview Modal */}
+      {/* MODAL DEL TICKET TÉRMICO VISUAL PREVIO */}
       {previewCutRecord && (
         <ThermalShiftCutTicket
           cut={previewCutRecord}

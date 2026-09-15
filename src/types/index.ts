@@ -184,6 +184,9 @@ export interface ShiftCutRecord {
   totalGrossSales: number; // Ventas totales
   totalCashSales: number; // Ventas en efectivo
   totalCardSales: number; // Ventas con tarjeta
+  systemGrossSales?: number; // Total de venta registrado en tickets del sistema
+  systemCashSales?: number; // Efectivo registrado en tickets
+  systemCardSales?: number; // Tarjeta registrada en tickets
   isCardManualOverride?: boolean; // Indica si el monto con tarjeta fue ingresado manualmente
   totalBreadSales?: number; // Venta de Pan ($)
   totalNonBreadSales?: number; // Venta de Otros / No Pan ($)
@@ -195,10 +198,15 @@ export interface ShiftCutRecord {
   outflows: CashOutflowItem[]; // Salidas / Pagos a proveedores
   totalOutflows: number; // Suma de salidas
   expectedCashInDrawer: number; // Efectivo total esperado en el cajón: (initialCash + totalCashSales - totalOutflows)
-  nextShiftCash?: number; // Fondo que se deja en caja para el siguiente turno
-  cashToDeliver?: number; // Efectivo neto a retirar / entregar al patrón o sobre: (expectedCashInDrawer - nextShiftCash)
+  nextShiftCash?: number; // Fondo que se deja en caja para el siguiente turno (por default $1,000)
+  cashToDeliver?: number; // Efectivo neto a retirar / entregar al patrón o sobre (lo que quedó para la bolsita)
+  expectedInBag?: number; // Lo que tenía que ponerse en bolsita según ventas en efectivo menos salidas
+  actualInBag?: number; // Lo que realmente quedó contado para la bolsita
+  bagDifference?: number; // Diferencia del cuadre de bolsita: actualInBag - expectedInBag
   actualCashInDrawer?: number; // Conteo real físico de dinero
   difference?: number; // Sobrante / Faltante
+  nextShiftBillsBreakdown?: { [denom: number]: number }; // Desglose de billetes que se dejan para sig. turno
+  drawerCashBreakdown?: { [denom: number]: number }; // Desglose por billetes y monedas contados de lo que quedó
   notes?: string;
   createdAt: string;
 }
