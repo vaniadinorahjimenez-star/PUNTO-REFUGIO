@@ -36,7 +36,14 @@ export function buildShiftCutEscPosBytes(cut: ShiftCutRecord, settings: Settings
     .line('CRUCE DE BOLSITA (TENIA VS REAL):')
     .separator(width, '-')
     .twoColumns('VENTAS SISTEMA:', `$${cut.totalGrossSales}.00`, width)
-    .twoColumns('PAGO CON TARJETA:', `$${cut.totalCardSales}.00${cut.isCardManualOverride ? ' *' : ''}`, width)
+    .twoColumns('PAGO CON TARJETA:', `$${cut.totalCardSales}.00${cut.isCardManualOverride ? ' *' : ''}`, width);
+
+  if (cut.shift1CardDeduction && cut.shift1CardDeduction > 0) {
+    const rawTerm = cut.rawCardTerminalTotal || (cut.totalCardSales + cut.shift1CardDeduction);
+    encoder.line(` (Term $${rawTerm} - T1 $${cut.shift1CardDeduction} = $${cut.totalCardSales})`);
+  }
+
+  encoder
     .twoColumns('VENTAS EFECTIVO:', `+$${cut.totalCashSales}.00`, width)
     .twoColumns('(-) SALIDAS PAGADAS:', `-$${cut.totalOutflows}.00`, width)
     .twoColumns('(SE DEJAN EN CAJA):', `$${cut.nextShiftCash !== undefined ? cut.nextShiftCash : 1000}.00`, width)

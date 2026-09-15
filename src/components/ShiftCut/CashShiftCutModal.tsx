@@ -112,6 +112,7 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
 
   // 1. PASO 1: Pago con Tarjeta
   const [manualCardInput, setManualCardInput] = useState<string>('');
+  const [shift1CardDeductionInput, setShift1CardDeductionInput] = useState<string>('');
   const [hasInitializedInputs, setHasInitializedInputs] = useState<boolean>(false);
 
   // 2. PASO 2: Se Dejan 1000 en Caja (con Conteo Fácil)
@@ -242,11 +243,59 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
     setManualCardInput(systemCardSales.toString());
   };
 
-  // 1. PASO 1: Venta con Tarjeta ingresada manualmente
-  const effectiveCardSales = useMemo(() => {
+  const isShift2 = useMemo(() => shiftType.includes('Turno 2'), [shiftType]);
+
+  // Total de cobros con tarjeta registrados en tickets de todo el día
+  const allTodayCardSales = useMemo(() => {
+    return allTodayTickets
+      .filter(t => t.paymentMethod === 'tarjeta')
+      .reduce((sum, t) => sum + t.total, 0);
+  }, [allTodayTickets]);
+
+  // Buscar cortes previos y ventas con tarjeta del Turno 1 de hoy para auto-descontar en Turno 2
+  const previousShiftCuts = useMemo(() => loadShiftCuts(), [isOpen]);
+  const todayShift1Cut = useMemo(() => {
+    return previousShiftCuts.find(c => c.date === todayStr && c.shiftName.includes('Turno 1'));
+  }, [previousShiftCuts, todayStr]);
+
+  const todayShift1CardFromTickets = useMemo(() => {
+    return allTodayTickets
+      .filter(t => resolveTicketShift(t) === 'turno1' && t.paymentMethod === 'tarjeta')
+      .reduce((sum, t) => sum + t.total, 0);
+  }, [allTodayTickets]);
+
+  const detectedShift1Card = useMemo(() => {
+    if (todayShift1Cut && todayShift1Cut.totalCardSales > 0) {
+      return todayShift1Cut.totalCardSales;
+    }
+    return todayShift1CardFromTickets > 0 ? todayShift1CardFromTickets : 0;
+  }, [todayShift1Cut, todayShift1CardFromTickets]);
+
+  // En Turno 2: Precargar automáticamente la venta del Turno 1 si se detectó y el campo está vacío
+  useEffect(() => {
+    if (isShift2 && detectedShift1Card > 0 && shift1CardDeductionInput === '') {
+      setShift1CardDeductionInput(detectedShift1Card.toString());
+    }
+  }, [isShift2, detectedShift1Card, shift1CardDeductionInput]);
+
+  // 1. PASO 1: Venta con Tarjeta ingresada manualmente y deducción de Turno 1
+  const rawTerminalVal = useMemo(() => {
     const val = parseFloat(manualCardInput);
     return isNaN(val) ? 0 : Math.max(0, val);
   }, [manualCardInput]);
+
+  const shift1DeductionVal = useMemo(() => {
+    if (!isShift2) return 0;
+    const val = parseFloat(shift1CardDeductionInput);
+    return isNaN(val) ? 0 : Math.max(0, val);
+  }, [isShift2, shift1CardDeductionInput]);
+
+  const effectiveCardSales = useMemo(() => {
+    if (isShift2 && shift1DeductionVal > 0) {
+      return Math.max(0, rawTerminalVal - shift1DeductionVal);
+    }
+    return rawTerminalVal;
+  }, [isShift2, rawTerminalVal, shift1DeductionVal]);
 
   // Venta en efectivo calculada conforme a las ventas del sistema
   const systemCashSalesExpected = useMemo(() => {
@@ -370,6 +419,8 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
       totalGrossSales,
       totalCashSales: systemCashSalesExpected,
       totalCardSales: effectiveCardSales,
+      rawCardTerminalTotal: isShift2 && shift1DeductionVal > 0 ? rawTerminalVal : undefined,
+      shift1CardDeduction: isShift2 && shift1DeductionVal > 0 ? shift1DeductionVal : undefined,
       systemGrossSales: systemTotalGross,
       systemCashSales,
       systemCardSales,
@@ -600,52 +651,200 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
               </div>
 
               {/* Input Pago con Tarjeta */}
-              <div className="bg-blue-50/70 rounded-2xl p-3 border-2 border-blue-300 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-black text-blue-950 uppercase tracking-wider flex items-center gap-1.5">
-                    <CreditCard className="w-4 h-4 text-blue-600" />
-                    <span>Cobrado con Tarjeta (Terminal / Vouchers)</span>
-                  </span>
-                  {systemCardSales > 0 && (
+              {isShift2 ? (
+                /* ========================================== */
+                /* TURNO 2: MISMA FILA CON VENTA TURNO 1 A DESCONTAR */
+                /* ========================================== */
+                <div className="bg-blue-50/70 rounded-2xl p-3 sm:p-3.5 border-2 border-blue-300 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                    <span className="text-xs font-black text-blue-950 uppercase tracking-wider flex items-center gap-1.5">
+                      <CreditCard className="w-4 h-4 text-blue-600" />
+                      <span>Cobro en Terminal con Descuento de Turno 1</span>
+                    </span>
+                    {detectedShift1Card > 0 && (
+                      <span className="text-[10px] font-bold text-amber-900 bg-amber-100/90 border border-amber-300 px-2 py-0.5 rounded-lg flex items-center gap-1">
+                        <span>🌅 Turno 1 registró:</span>
+                        <strong className="font-mono font-black text-amber-950">${detectedShift1Card}.00</strong>
+                      </span>
+                    )}
+                  </div>
+
+                  {/* MISMA FILA: GRID DE 3 ELEMENTOS EN LÍNEA */}
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 sm:gap-3 items-center">
+                    {/* COL 1: TOTAL EN TERMINAL */}
+                    <div className="sm:col-span-5 bg-white p-2.5 rounded-2xl border-2 border-blue-300 shadow-2xs space-y-1">
+                      <div className="flex items-center justify-between">
+                        <label htmlFor="manual-card-sales-input" className="text-[10px] font-black text-slate-700 uppercase tracking-wider block">
+                          Total en Terminal:
+                        </label>
+                        {allTodayCardSales > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setManualCardInput(allTodayCardSales.toString())}
+                            className="text-[9px] text-blue-700 hover:underline font-bold"
+                            title="Copiar tarjetas registradas hoy en tickets"
+                          >
+                            Día: ${allTodayCardSales}
+                          </button>
+                        )}
+                      </div>
+                      <div className="relative flex items-center">
+                        <span className="absolute left-2.5 text-lg font-black text-blue-700 font-mono">$</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          id="manual-card-sales-input"
+                          value={manualCardInput}
+                          onChange={(e) => setManualCardInput(cleanAmountInput(e.target.value))}
+                          onFocus={(e) => e.target.select()}
+                          placeholder="0"
+                          className="w-full pl-7 pr-2 py-1.5 bg-blue-50/20 rounded-xl text-lg sm:text-xl font-black text-blue-700 border border-blue-300 focus:border-blue-600 focus:outline-none font-mono"
+                        />
+                      </div>
+                      <span className="text-[9px] text-slate-500 block leading-tight">
+                        Ej. $8,000 en pantalla/vouchers
+                      </span>
+                    </div>
+
+                    {/* SIGNO MENOS */}
+                    <div className="hidden sm:flex sm:col-span-1 items-center justify-center text-rose-500 font-black text-xl select-none">
+                      −
+                    </div>
+
+                    {/* COL 2: VENTA TURNO 1 A DESCONTAR */}
+                    <div className="sm:col-span-5 bg-white p-2.5 rounded-2xl border-2 border-rose-300 shadow-2xs space-y-1">
+                      <div className="flex items-center justify-between">
+                        <label htmlFor="shift1-card-deduction-input" className="text-[10px] font-black text-rose-800 uppercase tracking-wider block">
+                          Venta Turno 1 (Descontar):
+                        </label>
+                        {detectedShift1Card > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setShift1CardDeductionInput(detectedShift1Card.toString())}
+                            className="text-[9px] text-rose-700 bg-rose-50 hover:bg-rose-100 px-1.5 py-0.5 rounded border border-rose-200 font-black cursor-pointer transition-colors"
+                            title="Cargar venta de Turno 1 detectada"
+                          >
+                            Usar ${detectedShift1Card}
+                          </button>
+                        )}
+                      </div>
+                      <div className="relative flex items-center">
+                        <span className="absolute left-2.5 text-lg font-black text-rose-600 font-mono">-$</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          id="shift1-card-deduction-input"
+                          value={shift1CardDeductionInput}
+                          onChange={(e) => setShift1CardDeductionInput(cleanAmountInput(e.target.value))}
+                          onFocus={(e) => e.target.select()}
+                          placeholder="0"
+                          className="w-full pl-8 pr-2 py-1.5 bg-rose-50/30 rounded-xl text-lg sm:text-xl font-black text-rose-700 border border-rose-300 focus:border-rose-600 focus:outline-none font-mono"
+                        />
+                      </div>
+                      <span className="text-[9px] text-rose-600/80 block leading-tight">
+                        Ej. $4,000 cobrados en la mañana
+                      </span>
+                    </div>
+
+                    {/* SIGNO IGUAL */}
+                    <div className="hidden sm:flex sm:col-span-1 items-center justify-center text-blue-600 font-black text-xl select-none">
+                      =
+                    </div>
+                  </div>
+
+                  {/* RESULTADO NETO AUTOMÁTICO EN LA MISMA SECCIÓN */}
+                  <div className="bg-emerald-50 border-2 border-emerald-400 p-2.5 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-2">
+                    <div className="space-y-0.5 text-center sm:text-left">
+                      <span className="text-[10px] font-black text-emerald-950 uppercase tracking-wider block">
+                        Tarjeta Neta del Turno 2:
+                      </span>
+                      <p className="text-[11px] text-emerald-900 font-medium leading-tight">
+                        ${rawTerminalVal}.00 (Terminal) − ${shift1DeductionVal}.00 (Turno 1) = <strong className="font-mono text-emerald-950 font-black text-xs">${effectiveCardSales}.00</strong>
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0 flex items-center gap-2">
+                      <div>
+                        <div className="text-xl sm:text-2xl font-black text-emerald-700 font-mono leading-none">
+                          ${effectiveCardSales}.00
+                        </div>
+                        <span className="text-[9px] font-bold text-emerald-800 block">
+                          Aplicado al cierre de T2
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Resumen de efectivo esperado */}
+                  <div className="flex items-center justify-between text-[11px] text-blue-900 font-medium pt-0.5">
+                    <span>
+                      Venta en Efectivo esperada: <strong className="font-mono text-blue-950 font-black">${systemCashSalesExpected}.00</strong>
+                      <span className="text-slate-500 text-[10px] ml-1.5">(${systemTotalGross} total T2 − ${effectiveCardSales} tarjeta T2)</span>
+                    </span>
                     <button
                       type="button"
-                      onClick={handleCopyCardFromTickets}
-                      className="text-[10px] text-blue-700 bg-white hover:bg-blue-100 border border-blue-300 px-2 py-0.5 rounded-lg font-bold cursor-pointer transition-colors"
-                      title="Copiar del sistema"
+                      onClick={() => {
+                        setManualCardInput('');
+                        setShift1CardDeductionInput('');
+                      }}
+                      className="text-[10px] text-blue-600 hover:underline font-bold cursor-pointer"
                     >
-                      📋 Copiar (${systemCardSales})
+                      Limpiar campos
                     </button>
-                  )}
+                  </div>
                 </div>
+              ) : (
+                /* ========================================== */
+                /* TURNO 1 O COMPLETO: INPUT DIRECTO */
+                /* ========================================== */
+                <div className="bg-blue-50/70 rounded-2xl p-3 border-2 border-blue-300 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-blue-950 uppercase tracking-wider flex items-center gap-1.5">
+                      <CreditCard className="w-4 h-4 text-blue-600" />
+                      <span>Cobrado con Tarjeta (Terminal / Vouchers)</span>
+                    </span>
+                    {systemCardSales > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleCopyCardFromTickets}
+                        className="text-[10px] text-blue-700 bg-white hover:bg-blue-100 border border-blue-300 px-2 py-0.5 rounded-lg font-bold cursor-pointer transition-colors"
+                        title="Copiar del sistema"
+                      >
+                        📋 Copiar (${systemCardSales})
+                      </button>
+                    )}
+                  </div>
 
-                <div className="relative flex items-center">
-                  <span className="absolute left-3 text-xl font-black text-blue-700 font-mono">$</span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    id="manual-card-sales-input"
-                    value={manualCardInput}
-                    onChange={(e) => setManualCardInput(cleanAmountInput(e.target.value))}
-                    onFocus={(e) => e.target.select()}
-                    placeholder="0"
-                    className="w-full pl-8 pr-3 py-2 bg-white rounded-xl text-xl sm:text-2xl font-black text-blue-700 border-2 border-blue-400 focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-300 font-mono shadow-2xs"
-                  />
-                </div>
+                  <div className="relative flex items-center">
+                    <span className="absolute left-3 text-xl font-black text-blue-700 font-mono">$</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      id="manual-card-sales-input"
+                      value={manualCardInput}
+                      onChange={(e) => setManualCardInput(cleanAmountInput(e.target.value))}
+                      onFocus={(e) => e.target.select()}
+                      placeholder="0"
+                      className="w-full pl-8 pr-3 py-2 bg-white rounded-xl text-xl sm:text-2xl font-black text-blue-700 border-2 border-blue-400 focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-300 font-mono shadow-2xs"
+                    />
+                  </div>
 
-                <div className="flex items-center justify-between text-[11px] text-blue-900 font-medium">
-                  <span>
-                    Venta en Efectivo esperada: <strong className="font-mono text-blue-950 font-black">${systemCashSalesExpected}.00</strong>
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setManualCardInput('')}
-                    className="text-[10px] text-blue-600 hover:underline font-bold cursor-pointer"
-                  >
-                    Poner $0
-                  </button>
+                  <div className="flex items-center justify-between text-[11px] text-blue-900 font-medium">
+                    <span>
+                      Venta en Efectivo esperada: <strong className="font-mono text-blue-950 font-black">${systemCashSalesExpected}.00</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setManualCardInput('')}
+                      className="text-[10px] text-blue-600 hover:underline font-bold cursor-pointer"
+                    >
+                      Poner $0
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* ========================================================= */}

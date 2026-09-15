@@ -184,6 +184,8 @@ export interface ShiftCutRecord {
   totalGrossSales: number; // Ventas totales
   totalCashSales: number; // Ventas en efectivo
   totalCardSales: number; // Ventas con tarjeta
+  rawCardTerminalTotal?: number; // Lectura total acumulada en terminal bancaria en Turno 2 antes de restar T1
+  shift1CardDeduction?: number; // Venta con tarjeta del Turno 1 descontada para el cierre del Turno 2
   systemGrossSales?: number; // Total de venta registrado en tickets del sistema
   systemCashSales?: number; // Efectivo registrado en tickets
   systemCardSales?: number; // Tarjeta registrada en tickets

@@ -293,6 +293,12 @@ export const ThermalShiftCutTicket: React.FC<ThermalShiftCutTicketProps> = ({
                 <span>PAGO CON TARJETA:</span>
                 <span>${cut.totalCardSales}.00{cut.isCardManualOverride ? ' *' : ''}</span>
               </div>
+              {cut.shift1CardDeduction !== undefined && cut.shift1CardDeduction > 0 && (
+                <div className="text-[9.5px] text-black/80 flex justify-between pl-2 italic">
+                  <span>↳ Terminal ${cut.rawCardTerminalTotal || (cut.totalCardSales + cut.shift1CardDeduction)} − T1 ${cut.shift1CardDeduction}:</span>
+                  <span className="font-bold">Neto T2: ${cut.totalCardSales}.00</span>
+                </div>
+              )}
               <div className="flex justify-between text-black">
                 <span>VENTAS EN EFECTIVO:</span>
                 <span>+${cut.totalCashSales}.00</span>

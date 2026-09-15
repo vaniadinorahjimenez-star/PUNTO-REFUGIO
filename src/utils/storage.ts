@@ -1002,6 +1002,10 @@ export function generateShiftCutWhatsAppMessage(cut: ShiftCutRecord, settings: S
   text += `💰 *CRUCE DE BOLSITA (TENÍA QUE PONERSE VS REALMENTE QUEDÓ):*\n`;
   text += `• Total Ventas Sistema: *$${cut.totalGrossSales}.00*\n`;
   text += `• Pago con Tarjeta: $${cut.totalCardSales}.00${cut.isCardManualOverride ? ' (Manual)' : ''}\n`;
+  if (cut.shift1CardDeduction && cut.shift1CardDeduction > 0) {
+    const rawTerm = cut.rawCardTerminalTotal || (cut.totalCardSales + cut.shift1CardDeduction);
+    text += `   _(Terminal: $${rawTerm}.00 - T1: $${cut.shift1CardDeduction}.00 = Neto T2: $${cut.totalCardSales}.00)_\n`;
+  }
   text += `• Ventas en Efectivo: +$${cut.totalCashSales}.00\n`;
   text += `• (-) Salidas Pagadas: -$${cut.totalOutflows}.00\n`;
   text += `• Fondo Cambio en Caja: $${cut.nextShiftCash !== undefined ? cut.nextShiftCash : 1000}.00\n`;
