@@ -94,7 +94,7 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({
   const [quickPricesInput, setQuickPricesInput] = useState<string>(
     settings.quickPrices.filter(p => {
       const num = Number(p);
-      return num !== 8 && !(num >= 90 && num <= 100);
+      return !(num >= 90 && num <= 100);
     }).join(', ')
   );
 
@@ -181,7 +181,7 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({
     const parsedPrices = quickPricesInput
       .split(',')
       .map(s => parseFloat(s.trim()))
-      .filter(n => !isNaN(n) && n > 0 && n !== 8 && !(n >= 90 && n <= 100));
+      .filter(n => !isNaN(n) && n > 0 && !(n >= 90 && n <= 100));
 
     const updatedSettings: Settings = {
       ...localSettings,

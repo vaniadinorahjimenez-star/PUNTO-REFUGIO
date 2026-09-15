@@ -296,17 +296,23 @@ export const PosCounter: React.FC<PosCounterProps> = ({
   const [showPaletasModal, setShowPaletasModal] = useState<boolean>(false);
   const [paletasQty, setPaletasQty] = useState<number>(1);
 
-  // Precios rápidos de mostrador solicitados: 5, 6.50, 12, 15, 18, 20, 25, 30, 35
-  // Eliminados el 8 y los botones del 90 al 100 para que queden exactamente 2 filas de 5 botones (9 de pan + 1 botón manual OTRO)
-  const quickPrices = (settings.quickPrices && settings.quickPrices.length > 0
+  // Apartado Precios Especiales de Clientes Especiales (desplegable hacia abajo)
+  const [showSpecialPrices, setShowSpecialPrices] = useState<boolean>(false);
+  // Precios especiales en orden: 4, 6, 6.50, 7, 9, 10, 11, 12, 13, 16, 18
+  const specialClientPrices = [4, 6, 6.5, 7, 9, 10, 11, 12, 13, 16, 18];
+
+  // Precios rápidos de mostrador solicitados: 5, 6.50, 8 (Dona Mini), 12, 15, 18, 20, 25, 30, 35
+  const basePrices = (settings.quickPrices && settings.quickPrices.length > 0
     ? settings.quickPrices
-    : [5, 6.5, 12, 15, 18, 20, 25, 30, 35]
+    : [5, 6.5, 8, 12, 15, 18, 20, 25, 30, 35]
   )
-    .filter(p => {
-      const num = Number(p);
-      return num !== 8 && !(num >= 90 && num <= 100);
-    })
-    .slice(0, 9);
+    .map(p => Number(p))
+    .filter(num => !isNaN(num) && num > 0 && !(num >= 90 && num <= 100));
+
+  // Asegurar que $8 (Dona Mini) siempre esté presente y ordenado
+  const quickPrices = basePrices.includes(8)
+    ? [...basePrices].sort((a, b) => a - b)
+    : [...basePrices, 8].sort((a, b) => a - b);
 
   // Helper formatting for prices
   const formatMoneyLabel = (num: number) => {
@@ -531,7 +537,23 @@ export const PosCounter: React.FC<PosCounterProps> = ({
   const handleAddPrice = (price: number, name?: string, productId?: string) => {
     playBeep(700, 'sine', 0.06);
     const qty = selectedMultiplier > 0 ? selectedMultiplier : 1;
-    const itemName = name || (price === 8 ? 'Bolillo / Telera ($8)' : price === 10 ? 'Pan Dulce Tradicional ($10)' : price === 12 ? 'Dona / Especial ($12)' : price === 18 ? 'Cuerno Mantequilla ($18)' : price === 20 ? 'Oreja / Empanada ($20)' : price === 25 ? 'Panqué Nuez/Elote ($25)' : price === 35 ? 'Baguette Rústica ($35)' : price === 90 ? 'Rosca Mediana ($90)' : price === 100 ? 'Pastel / Tarta ($100)' : price === 150 ? 'Pastel Grande 3 Leches ($150)' : `Pan de $${price}`);
+    const itemName = name || (
+      price === 8 ? 'Dona Mini $8' :
+      price === 5 ? 'Bolillo / Pan $5' :
+      price === 6.5 ? 'Pan Especial $6.50' :
+      price === 10 ? 'Pan Dulce Tradicional ($10)' :
+      price === 12 ? 'Dona / Especial ($12)' :
+      price === 15 ? 'Concha / Especial ($15)' :
+      price === 18 ? 'Cuerno Mantequilla ($18)' :
+      price === 20 ? 'Oreja / Empanada ($20)' :
+      price === 25 ? 'Panqué Nuez/Elote ($25)' :
+      price === 30 ? 'Pan Especial ($30)' :
+      price === 35 ? 'Baguette Rústica ($35)' :
+      price === 90 ? 'Rosca Mediana ($90)' :
+      price === 100 ? 'Pastel / Tarta ($100)' :
+      price === 150 ? 'Pastel Grande 3 Leches ($150)' :
+      `Pan de $${price}`
+    );
 
     setTicketItems(prev => {
       // If same price already exists as the last entry or with same name, merge it or append
@@ -1485,8 +1507,8 @@ export const PosCounter: React.FC<PosCounterProps> = ({
             </div>
           </div>
 
-          {/* PASO 2: Precios de Pan en 2 Filas de 5 Botones ($5 a $35 y OTRO Manual) */}
-          <div className="pt-0.5">
+          {/* PASO 2: Precios de Pan ($5 a $35 incluyendo $8 Dona Mini, OTRO Manual, y Precios Especiales) */}
+          <div className="pt-0.5 relative">
             <div className="flex items-center justify-between mb-1 px-0.5">
               <span className="text-xs sm:text-[13px] font-black uppercase tracking-wider text-amber-950 flex items-center gap-1">
                 <span>🥖</span> Paso 2: Precios de Pan
@@ -1496,32 +1518,35 @@ export const PosCounter: React.FC<PosCounterProps> = ({
               </span>
             </div>
 
-            <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
+            <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 sm:gap-2">
               {quickPrices.map((price) => {
                 const prod = products.find(p => p.price === price);
                 const displayPrice = price === 6.5 ? '$6.50' : `$${price}`;
+                const itemNameForClick = `Pan ${displayPrice}`;
                 return (
                   <button
                     key={price}
                     id={`price-btn-${price}`}
                     type="button"
-                    onPointerDown={(e) => handlePointerDownPrice(e, price, `Pan ${displayPrice}`, prod?.id)}
-                    onClick={() => triggerAddPriceTouch(price, `Pan ${displayPrice}`, prod?.id)}
-                    className="touch-pos-btn select-none group relative bg-[#FAF8F6] hover:bg-[#FFF5F0] active:bg-[#FFEAE0] border-2 border-[#D5CFC5] hover:border-[#D95D39] active:border-[#D95D39] rounded-xl sm:rounded-2xl p-1 sm:p-1.5 flex flex-col items-center justify-center transition-all duration-75 active:scale-95 shadow-2xs hover:shadow-xs h-[58px] sm:h-[64px] lg:h-[68px] cursor-pointer"
+                    onPointerDown={(e) => handlePointerDownPrice(e, price, itemNameForClick, prod?.id)}
+                    onClick={() => triggerAddPriceTouch(price, itemNameForClick, prod?.id)}
+                    className="touch-pos-btn select-none group relative bg-[#FAF8F6] hover:bg-[#FFF5F0] active:bg-[#FFEAE0] border-2 border-[#D5CFC5] hover:border-[#D95D39] active:border-[#D95D39] rounded-xl sm:rounded-2xl p-1 sm:p-1.5 flex flex-col items-center justify-center transition-all duration-75 active:scale-95 shadow-2xs hover:shadow-xs h-[74px] sm:h-[80px] lg:h-[86px] cursor-pointer"
                   >
-                    <div className="absolute top-1 left-1.5">
+                    <div className="absolute top-1.5 left-2">
                       <span className="bg-white text-slate-700 px-1 py-0.2 rounded text-[9px] sm:text-[10px] border border-[#E5E1DA] font-bold font-mono">
                         +{selectedMultiplier}
                       </span>
                     </div>
 
-                    <div className="text-2xl sm:text-3xl font-black text-slate-950 group-hover:text-[#D95D39] tracking-tight leading-none font-mono mt-1">
+                    <div className={`font-black text-slate-950 group-hover:text-[#D95D39] tracking-tight leading-none font-mono mt-1 ${
+                      price === 6.5 ? 'text-2xl sm:text-3xl lg:text-[34px]' : 'text-3xl sm:text-4xl lg:text-[40px]'
+                    }`}>
                       {displayPrice}
                     </div>
 
                     {/* Live total badge preview when multiplier > 1 */}
                     {selectedMultiplier > 1 && (
-                      <div className="absolute -top-1.5 -right-1 bg-[#D95D39] text-white text-[9px] sm:text-[10px] font-black px-1.5 py-0.2 rounded-full shadow-2xs border border-white font-mono z-10">
+                      <div className="absolute -top-2 -right-1 bg-[#D95D39] text-white text-[9px] sm:text-[10px] font-black px-1.5 py-0.2 rounded-full shadow-2xs border border-white font-mono z-10">
                         =${price === 6.5 ? (selectedMultiplier * price).toFixed(2) : selectedMultiplier * price}
                       </div>
                     )}
@@ -1529,7 +1554,7 @@ export const PosCounter: React.FC<PosCounterProps> = ({
                 );
               })}
 
-              {/* Manual Custom Price Button en la 2da Fila, posición 5 */}
+              {/* Manual Custom Price Button (+ OTRO) */}
               <button
                 id="custom-price-btn"
                 type="button"
@@ -1538,18 +1563,122 @@ export const PosCounter: React.FC<PosCounterProps> = ({
                   setShowCustomPriceModal(true);
                 }}
                 onClick={() => setShowCustomPriceModal(true)}
-                className="touch-pos-btn select-none bg-[#FFF5F0] hover:bg-[#FFEAE0] active:bg-[#FFDFD0] border-2 border-dashed border-[#D95D39] hover:border-[#D95D39] rounded-xl sm:rounded-2xl p-1 sm:p-1.5 flex flex-col items-center justify-center transition-all duration-75 active:scale-95 text-[#D95D39] shadow-2xs h-[58px] sm:h-[64px] lg:h-[68px] cursor-pointer"
+                className="touch-pos-btn select-none bg-[#FFF5F0] hover:bg-[#FFEAE0] active:bg-[#FFDFD0] border-2 border-dashed border-[#D95D39] hover:border-[#D95D39] rounded-xl sm:rounded-2xl p-1 sm:p-1.5 flex flex-col items-center justify-center transition-all duration-75 active:scale-95 text-[#D95D39] shadow-2xs h-[74px] sm:h-[80px] lg:h-[86px] cursor-pointer col-span-1"
                 title="Precio libre manual"
               >
-                <Plus className="w-5 h-5 text-[#D95D39] stroke-[2.8]" />
-                <span className="text-xs font-black uppercase tracking-tight leading-none mt-0.5 text-[#D95D39]">
+                <Plus className="w-6 h-6 text-[#D95D39] stroke-[2.8]" />
+                <span className="text-xs sm:text-sm font-black uppercase tracking-tight leading-none mt-1 text-[#D95D39]">
                   OTRO
                 </span>
                 <span className="text-[9px] sm:text-[10px] text-slate-700 font-bold leading-none mt-0.5">
                   Manual
                 </span>
               </button>
+
+              {/* Botón de Precios Especiales (JUNTO AL DE + OTRO) */}
+              <button
+                id="toggle-special-client-prices-btn"
+                type="button"
+                onClick={() => {
+                  playBeep(750, 'sine', 0.04);
+                  setShowSpecialPrices(prev => !prev);
+                }}
+                className={`touch-pos-btn select-none relative border-2 rounded-xl sm:rounded-2xl p-1 sm:p-1.5 flex flex-col items-center justify-center transition-all duration-75 active:scale-95 shadow-2xs h-[74px] sm:h-[80px] lg:h-[86px] cursor-pointer col-span-1 ${
+                  showSpecialPrices
+                    ? 'bg-amber-400 text-amber-950 border-amber-500 ring-2 ring-amber-400 shadow-md'
+                    : 'bg-gradient-to-b from-amber-50 to-orange-50/80 hover:bg-amber-100 text-amber-950 border-amber-300 hover:border-amber-500'
+                }`}
+                title="Precios Especiales de Clientes Especiales (Desplegar hacia abajo)"
+              >
+                <div className="flex items-center gap-0.5">
+                  <span className="text-base sm:text-lg">⭐</span>
+                  <ChevronDown className={`w-4 h-4 text-amber-900 transition-transform duration-200 ${showSpecialPrices ? 'rotate-180' : ''}`} />
+                </div>
+                <span className="text-xs sm:text-sm font-black uppercase tracking-tight leading-none mt-1 text-amber-950">
+                  ESPECIAL
+                </span>
+                <span className="text-[9px] sm:text-[10px] text-amber-800 font-bold leading-none mt-0.5">
+                  Clientes
+                </span>
+              </button>
             </div>
+
+            {/* PANEL FLOTANTE DESPLEGABLE QUE SE DESPLACE HACIA ABAJO SIN MOVER LOS ÚLTIMOS 2 TICKETS */}
+            {showSpecialPrices && (
+              <>
+                {/* Backdrop invisible / sutil para cerrar al hacer clic afuera */}
+                <div
+                  className="fixed inset-0 z-20 bg-black/10 backdrop-blur-[0.5px]"
+                  onClick={() => setShowSpecialPrices(false)}
+                />
+
+                <div
+                  id="special-prices-dropdown-panel"
+                  className="absolute top-full left-0 right-0 z-30 mt-1.5 bg-gradient-to-b from-amber-50/98 via-white to-orange-50/95 rounded-2xl border-2 border-amber-400 shadow-2xl p-2 sm:p-2.5 animate-in fade-in slide-in-from-top-2 duration-150"
+                >
+                  <div className="flex items-center justify-between mb-1.5 px-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-base">⭐</span>
+                      <span className="text-xs sm:text-[13px] font-black uppercase tracking-wide text-amber-950">
+                        Precios Especiales de Clientes
+                      </span>
+                      <span className="text-[9px] sm:text-[10px] bg-amber-600 text-white font-black px-1.5 py-0.2 rounded-full font-mono shadow-2xs">
+                        11 Precios
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black text-amber-900 bg-amber-100 border border-amber-300 px-2 py-0.5 rounded-full font-mono">
+                        +{selectedMultiplier} {selectedMultiplier === 1 ? 'pieza' : 'piezas'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowSpecialPrices(false)}
+                        className="px-2 py-0.5 bg-slate-100 hover:bg-rose-100 text-slate-700 hover:text-rose-700 rounded-lg text-xs font-black transition-colors border border-slate-300 cursor-pointer"
+                        title="Cerrar panel"
+                      >
+                        ✕ Cerrar
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-11 gap-1 sm:gap-1.5">
+                    {specialClientPrices.map((price) => {
+                      const displayPrice = price === 6.5 ? '$6.50' : `$${price}`;
+                      const prod = products.find(p => p.price === price);
+                      const itemName = `Pan Especial ${displayPrice}`;
+                      return (
+                        <button
+                          key={`special-${price}`}
+                          id={`special-client-price-${price}`}
+                          type="button"
+                          onPointerDown={(e) => handlePointerDownPrice(e, price, itemName, prod?.id)}
+                          onClick={() => triggerAddPriceTouch(price, itemName, prod?.id)}
+                          className="touch-pos-btn select-none group relative bg-white hover:bg-amber-100 active:bg-amber-200 border-2 border-amber-300 hover:border-amber-600 rounded-xl p-1 flex flex-col items-center justify-center transition-all duration-75 active:scale-95 shadow-2xs hover:shadow-xs h-[52px] sm:h-[58px] cursor-pointer"
+                        >
+                          <div className="absolute top-0.5 left-1">
+                            <span className="bg-amber-100 text-amber-900 px-0.5 py-0.2 rounded text-[7.5px] sm:text-[8px] border border-amber-300 font-bold font-mono">
+                              +{selectedMultiplier}
+                            </span>
+                          </div>
+                          <div className="text-xl sm:text-2xl font-black text-amber-950 group-hover:text-amber-800 tracking-tight leading-none font-mono mt-1">
+                            {displayPrice}
+                          </div>
+                          <span className="text-[7.5px] sm:text-[8.5px] font-black text-amber-700 leading-none uppercase tracking-tight mt-0.5">
+                            Especial
+                          </span>
+                          {selectedMultiplier > 1 && (
+                            <div className="absolute -top-1.5 -right-1 bg-amber-600 text-white text-[8.5px] sm:text-[9px] font-black px-1.5 py-0.2 rounded-full shadow-2xs border border-white font-mono z-10">
+                              =${price === 6.5 ? (selectedMultiplier * price).toFixed(2) : selectedMultiplier * price}
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           {/* PASO 3: Acompañamientos, Lácteos y Postres (Compactos en 1 Sola Fila sin hacer 2 filas) */}

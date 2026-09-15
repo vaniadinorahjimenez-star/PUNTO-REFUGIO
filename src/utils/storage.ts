@@ -20,7 +20,7 @@ export const DEFAULT_SETTINGS: Settings = {
   ticketFooter: '¡Gracias por su preferencia! Vuelva pronto.',
   loyaltyPointsPerPesos: 20, // $20 pesos = 1 punto
   loyaltyValuePerPoint: 1, // 1 punto = $1 peso
-  quickPrices: [5, 6.5, 12, 15, 18, 20, 25, 30, 35],
+  quickPrices: [5, 6.5, 8, 12, 15, 18, 20, 25, 30, 35],
   pinAdmin: '13579',
   adminPin: '13579',
   taxRate: 0,
@@ -124,13 +124,15 @@ export const DEFAULT_PRODUCTS: BreadProduct[] = [
   { id: 'p6_5', name: 'Pan Especial / Telera $6.50', price: 6.5, category: 'Bolillo y Telera', isQuickPreset: true },
   { id: 'p7_pref', name: 'Pan Preferente $7', price: 7, category: 'Pan Dulce Tradicional' },
   { id: 'p7_5_pref', name: 'Pan Preferente $7.50', price: 7.5, category: 'Pan Dulce Tradicional' },
-  { id: 'p8', name: 'Bolillo / Telera Tradicional $8', price: 8, category: 'Bolillo y Telera', isQuickPreset: false },
+  { id: 'p8', name: 'Dona Mini $8', price: 8, category: 'Pan Dulce Tradicional', isQuickPreset: true },
   { id: 'p9_pref', name: 'Pan Preferente $9', price: 9, category: 'Pan Dulce Tradicional' },
+  { id: 'p10_pref', name: 'Pan Preferente $10', price: 10, category: 'Pan Dulce Tradicional' },
   { id: 'p11_pref', name: 'Pan Preferente $11', price: 11, category: 'Pan Dulce Tradicional' },
   { id: 'p12', name: 'Dona / Pan Dulce $12', price: 12, category: 'Pan Dulce Tradicional', isQuickPreset: true },
   { id: 'p12_5_pref', name: 'Pan Fino Preferente $12.50', price: 12.5, category: 'Pan Dulce Tradicional' },
   { id: 'p13_pref', name: 'Pan Preferente $13', price: 13, category: 'Pan Dulce Tradicional' },
   { id: 'p15', name: 'Concha / Pan Fino $15', price: 15, category: 'Pan Dulce Tradicional', isQuickPreset: true },
+  { id: 'p16_pref', name: 'Pan Preferente $16', price: 16, category: 'Pan Dulce Tradicional' },
   { id: 'p18', name: 'Cuerno de Mantequilla $18', price: 18, category: 'Pan Dulce Tradicional', isQuickPreset: true },
   { id: 'p20', name: 'Oreja / Empanada $20', price: 20, category: 'Pan Dulce Tradicional', isQuickPreset: true },
   { id: 'p25', name: 'Panqué Individual $25', price: 25, category: 'Panqués y Galletas', isQuickPreset: true },
@@ -456,9 +458,13 @@ export function loadSettings(): Settings {
         const originalLen = parsed.quickPrices.length;
         parsed.quickPrices = parsed.quickPrices.filter((p: number) => {
           const num = Number(p);
-          return num !== 8 && !(num >= 90 && num <= 100);
+          return !(num >= 90 && num <= 100);
         });
-        if (parsed.quickPrices.length !== originalLen) {
+        if (!parsed.quickPrices.some((p: number) => Number(p) === 8)) {
+          parsed.quickPrices.push(8);
+          parsed.quickPrices.sort((a: number, b: number) => a - b);
+        }
+        if (parsed.quickPrices.length !== originalLen || !parsed.quickPrices.includes(8)) {
           try {
             localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(parsed));
           } catch {
@@ -491,6 +497,14 @@ export function loadProducts(): BreadProduct[] {
           updated = true;
         }
       });
+      // Asegurar que el producto p8 sea Dona Mini $8
+      const p8Product = stored.find(p => p.id === 'p8');
+      if (p8Product && !p8Product.name.toLowerCase().includes('dona mini')) {
+        p8Product.name = 'Dona Mini $8';
+        p8Product.category = 'Pan Dulce Tradicional';
+        p8Product.isQuickPreset = true;
+        updated = true;
+      }
       if (updated) {
         localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(stored));
       }
