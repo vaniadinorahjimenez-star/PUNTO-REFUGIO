@@ -573,7 +573,7 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
         order.origin === 'mostrador' || 
         order.customerName.toLowerCase().includes('venta en tienda') || 
         order.customerName.toLowerCase().includes('mostrador') ||
-        (order.notes && order.notes.includes('[VENTA MOSTRADOR'));
+        (order.notes && (order.notes.includes('[VENTA MOSTRADOR') || order.notes.includes('[PEDIDO SIN COBRAR')));
       if (!isStore) return false;
     }
     if (filterChannel === 'reparto') {
@@ -585,8 +585,8 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
     }
     if (filterChannel === 'recoger_tienda') {
       const isPickup = order.orderChannel === 'recoger_tienda' ||
-        (order.notes && (order.notes.includes('[PIDE Y RECOGE') || order.notes.includes('[RECOGER EN TIENDA'))) ||
-        (!order.customerName.toLowerCase().includes('mostrador') && !order.customerName.toLowerCase().includes('venta en tienda') && order.deliveryType === 'tienda' && order.origin !== 'mostrador');
+        (order.notes && (order.notes.includes('[PIDE Y RECOGE') || order.notes.includes('[RECOGER EN TIENDA') || order.notes.includes('[PEDIDO SIN COBRAR'))) ||
+        (!order.customerName.toLowerCase().includes('mostrador') && !order.customerName.toLowerCase().includes('venta en tienda') && order.deliveryType === 'tienda');
       if (!isPickup) return false;
     }
 
@@ -994,6 +994,7 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
                   const isStore = order.orderChannel === 'venta_tienda' || order.origin === 'mostrador' || order.customerName.toLowerCase().includes('mostrador');
                   const isPickup = order.orderChannel === 'recoger_tienda' || (order.notes && order.notes.includes('[PIDE Y RECOGE'));
                   const isDelivery = order.orderChannel === 'reparto' || order.deliveryType === 'domicilio' || (order.assignedDriverId && order.assignedDriverId !== 'ninguno');
+                  const isUnpaidPos = (order.notes && order.notes.includes('[PEDIDO SIN COBRAR')) || (order.origin === 'mostrador' && order.pendingAmount > 0 && order.paymentStatus === 'pendiente');
 
                   return (
                     <tr 
@@ -1002,7 +1003,12 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
                     >
                       {/* 1. Canal */}
                       <td className="py-3 px-3 align-top whitespace-nowrap">
-                        {isDelivery ? (
+                        {isUnpaidPos ? (
+                          <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-950 border border-emerald-400 px-2 py-1 rounded-lg text-[10.5px] font-black shadow-2xs ring-1 ring-emerald-500/20">
+                            <ShoppingBag className="w-3 h-3 text-emerald-700" />
+                            <span>Mostrador Sin Cobrar</span>
+                          </span>
+                        ) : isDelivery ? (
                           <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-900 border border-blue-200 px-2 py-1 rounded-lg text-[10.5px] font-black">
                             <Truck className="w-3 h-3 text-blue-600" />
                             <span>Reparto ({order.assignedDriverId === 'osvaldo' ? 'Osvaldo' : order.assignedDriverId === 'simon' ? 'Simón' : 'Ruta'})</span>
@@ -1245,7 +1251,12 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
                   </div>
 
                   {/* Channel Badge */}
-                  {order.orderChannel === 'reparto' || order.deliveryType === 'domicilio' || (order.assignedDriverId && order.assignedDriverId !== 'ninguno') ? (
+                  {(order.notes && order.notes.includes('[PEDIDO SIN COBRAR')) || (order.origin === 'mostrador' && order.pendingAmount > 0 && order.paymentStatus === 'pendiente') ? (
+                    <span className="bg-emerald-100 text-emerald-950 text-[11px] font-black px-2 py-1 rounded-lg border border-emerald-400 flex items-center gap-1 shrink-0 shadow-2xs">
+                      <ShoppingBag className="w-3.5 h-3.5 text-emerald-700" />
+                      <span>Sin Cobrar</span>
+                    </span>
+                  ) : order.orderChannel === 'reparto' || order.deliveryType === 'domicilio' || (order.assignedDriverId && order.assignedDriverId !== 'ninguno') ? (
                     <span className="bg-blue-50 text-blue-800 text-[11px] font-bold px-2 py-1 rounded-lg border border-blue-200 flex items-center gap-1 shrink-0">
                       <Truck className="w-3.5 h-3.5 text-blue-600" />
                       <span>{driver ? driver.name.split(' ')[0] : 'Reparto'}</span>

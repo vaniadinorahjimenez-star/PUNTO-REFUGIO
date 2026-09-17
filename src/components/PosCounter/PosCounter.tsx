@@ -66,6 +66,7 @@ import { SmilingCheeseCubileteCelebration } from '../SmilingCheeseCubileteCelebr
 import { CashShiftCutModal } from '../ShiftCut/CashShiftCutModal';
 import { ZettleBluetoothModal } from './ZettleBluetoothModal';
 import { ClipPaymentModal } from './ClipPaymentModal';
+import { UnpaidOrderModal } from './UnpaidOrderModal';
 
 interface PosCounterProps {
   products: BreadProduct[];
@@ -165,6 +166,9 @@ export const PosCounter: React.FC<PosCounterProps> = ({
   const [orderNotes, setOrderNotes] = useState<string>('');
   const [createdOrder, setCreatedOrder] = useState<BakeryOrder | null>(null);
   const [showCubileteCelebration, setShowCubileteCelebration] = useState<BakeryOrder | null>(null);
+
+  // Pedido Sin Cobrar en Mostrador (Envío directo a Encargos y Pedidos)
+  const [showUnpaidOrderModal, setShowUnpaidOrderModal] = useState<boolean>(false);
 
   // Pide y Recoge Modal Bread Catalog & Custom Item State
   const [orderModalItems, setOrderModalItems] = useState<TicketItem[]>([]);
@@ -1337,6 +1341,95 @@ export const PosCounter: React.FC<PosCounterProps> = ({
     setCreatedOrder(null);
   };
 
+  // Abrir Modal de Pedido Sin Cobrar en Mostrador
+  const handleOpenUnpaidOrderModal = () => {
+    playBeep(700, 'sine', 0.05);
+    setShowUnpaidOrderModal(true);
+  };
+
+  // Confirmar y registrar Pedido Sin Cobrar en Encargos y Pedidos
+  const handleConfirmUnpaidOrder = (data: {
+    customerName: string;
+    customerPhone: string;
+    notes: string;
+    shouldPrint: boolean;
+  }) => {
+    const trimmedName = data.customerName.trim() || 'Cliente Sin Cobrar';
+    const folio = getNextOrderFolio();
+    const currentTotal = total;
+
+    // Convertir partidas del mostrador a items del pedido
+    const orderItems = ticketItems.length > 0 
+      ? ticketItems.map((item, idx) => ({
+          breadId: item.productId || `pos-unpaid-${Date.now()}-${idx}`,
+          name: item.name,
+          category: 'Pan de Mostrador',
+          quantity: item.quantity,
+          unitPrice: item.price,
+          total: item.total,
+          done: false
+        }))
+      : [
+          {
+            breadId: `custom-unpaid-${Date.now()}`,
+            name: 'Pan de Mostrador Sin Cobrar',
+            category: 'Pan de Mostrador',
+            quantity: 1,
+            unitPrice: currentTotal > 0 ? currentTotal : 0,
+            total: currentTotal > 0 ? currentTotal : 0,
+            done: false
+          }
+        ];
+
+    const newOrder: BakeryOrder = {
+      id: `ord-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      folio,
+      customerName: trimmedName,
+      customerPhone: data.customerPhone || (selectedCustomer ? selectedCustomer.phone : ''),
+      deliveryType: 'tienda',
+      orderChannel: 'recoger_tienda',
+      address: 'Mostrador de Tienda (Sin Cobrar)',
+      deliveryDate: getTodayString(),
+      deliveryTime: getNowTimeString(),
+      items: orderItems,
+      total: currentTotal,
+      deposit: 0,
+      pendingAmount: currentTotal,
+      paymentStatus: 'pendiente',
+      assignedDriverId: 'ninguno',
+      deliveryStatus: 'pendiente',
+      notes: `[PEDIDO SIN COBRAR EN MOSTRADOR]${data.notes ? ` - ${data.notes}` : ''}`,
+      createdAt: new Date().toISOString(),
+      origin: 'mostrador'
+    };
+
+    if (onSaveOrder) {
+      onSaveOrder(newOrder);
+    }
+
+    playCashSound();
+
+    if (data.shouldPrint) {
+      printOrderTicketDirectToPrinter(newOrder, settings);
+    }
+
+    setPrintToastNotice(`📦 Pedido sin cobrar #${folio} para "${trimmedName}" ($${currentTotal}.00) guardado en Encargos y Pedidos`);
+    setTimeout(() => {
+      setPrintToastNotice('');
+    }, 4500);
+
+    // Resetear mostrador
+    setTicketItems([]);
+    setPointsToRedeem(0);
+    setIsSpecialCustomerDiscount(false);
+    setCashGivenInput('');
+    setPhoneSearch('');
+    setSelectedCustomer(null);
+    setVirtualPhoneInput('');
+    setShowNewCustomerForm(false);
+    setShowUnpaidOrderModal(false);
+  };
+
   // Direct Bluetooth Pairing shortcut from top bar or ticket area
   const handleQuickBluetoothPairing = async () => {
     setIsConnectingZettlePos(true);
@@ -2122,6 +2215,17 @@ export const PosCounter: React.FC<PosCounterProps> = ({
               </div>
 
               <div className="flex items-center gap-1.5">
+                <button
+                  id="quick-unpaid-order-header-btn"
+                  type="button"
+                  onClick={handleOpenUnpaidOrderModal}
+                  className="text-white bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-[10px] px-2 py-0.5 rounded-md flex items-center gap-1 font-black transition-all cursor-pointer border border-emerald-400 shadow-2xs"
+                  title="Guardar como pedido sin cobrar en Encargos y Pedidos"
+                >
+                  <ShoppingBag className="w-3 h-3" />
+                  <span>Sin Cobrar</span>
+                </button>
+
                 {ticketItems.length > 0 && (
                   <button
                     id="clear-ticket-btn"
@@ -2441,6 +2545,33 @@ export const PosCounter: React.FC<PosCounterProps> = ({
                   </button>
                 </div>
 
+                {/* BOTÓN: PEDIDO SIN COBRAR (Encargos y Pedidos con saldo pendiente) */}
+                <button
+                  id="unpaid-order-main-btn"
+                  type="button"
+                  onClick={handleOpenUnpaidOrderModal}
+                  className="w-full bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-700 text-white font-black py-2 px-2.5 rounded-xl shadow-md hover:shadow-lg transition-all active:scale-98 flex items-center justify-between gap-1.5 text-xs sm:text-sm cursor-pointer border-2 border-emerald-400/80 ring-2 ring-emerald-400/25"
+                  title="Guardar pedido sin cobrar y mandarlo a Encargos y Pedidos"
+                >
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <div className="w-6 h-6 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
+                      <ShoppingBag className="w-3.5 h-3.5 text-white stroke-[2.5]" />
+                    </div>
+                    <span className="font-black tracking-tight text-white truncate">Pedido sin cobrar</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {ticketItems.length > 0 && (
+                      <span className="bg-white/20 px-2 py-0.5 rounded-md text-[11px] font-mono font-black text-white">
+                        {totalPieces} pzs • ${total}.00
+                      </span>
+                    )}
+                    <span className="text-[11px] font-bold text-emerald-100 flex items-center gap-0.5">
+                      <span>Encargo</span>
+                      <ArrowRight className="w-3 h-3" />
+                    </span>
+                  </div>
+                </button>
+
                 {/* BOTÓN: CORTE DE CAJA / TURNO (Mary, Paty, Jaz, Natty, Jonathan) */}
                 <button
                   id="shift-cut-open-btn"
@@ -2469,12 +2600,12 @@ export const PosCounter: React.FC<PosCounterProps> = ({
             <span className="text-sm sm:text-base font-black text-amber-400 leading-none">${total}.00</span>
           </div>
 
-          <div className="grid grid-cols-3 gap-1 flex-1">
+          <div className="grid grid-cols-4 gap-1 flex-1">
             <button
               id="mobile-quick-checkout-no-ticket-btn"
               type="button"
               onClick={handleQuickCheckoutWithoutTicket}
-              className="bg-emerald-600 text-white font-black text-[11px] py-2 px-1 rounded-xl shadow-lg border-2 border-emerald-300 ring-2 ring-emerald-400 ring-offset-1 flex items-center justify-center gap-1 active:scale-95 cursor-pointer whitespace-nowrap blink-sin-ticket"
+              className="bg-emerald-600 text-white font-black text-[10px] py-2 px-0.5 rounded-xl shadow-lg border-2 border-emerald-300 ring-2 ring-emerald-400 ring-offset-1 flex items-center justify-center gap-0.5 active:scale-95 cursor-pointer whitespace-nowrap blink-sin-ticket"
               title="Cobro rápido sin ticket"
             >
               <span>🍩</span>
@@ -2485,11 +2616,11 @@ export const PosCounter: React.FC<PosCounterProps> = ({
               id="mobile-checkout-print-btn"
               type="button"
               onClick={() => handleCompleteSale()}
-              className="bg-gradient-to-r from-[#D95D39] to-[#BF4C2A] text-white font-black text-[11px] py-2 px-1 rounded-xl shadow-xs flex items-center justify-center gap-1 active:scale-95 cursor-pointer border border-[#BF4C2A] whitespace-nowrap"
+              className="bg-gradient-to-r from-[#D95D39] to-[#BF4C2A] text-white font-black text-[10px] py-2 px-0.5 rounded-xl shadow-xs flex items-center justify-center gap-0.5 active:scale-95 cursor-pointer border border-[#BF4C2A] whitespace-nowrap"
               title="Cobrar con ticket"
             >
               <Printer className="w-3 h-3 shrink-0" />
-              <span className="truncate">Con Ticket</span>
+              <span className="truncate">Ticket</span>
             </button>
 
             <button
@@ -2501,11 +2632,22 @@ export const PosCounter: React.FC<PosCounterProps> = ({
                 setActiveCardFolio(f);
                 setShowClipModal(true);
               }}
-              className="bg-gradient-to-r from-[#FF5A00] to-[#E04D00] text-white font-black text-[11px] py-2 px-1 rounded-xl shadow-xs flex items-center justify-center gap-1 active:scale-95 cursor-pointer border border-[#E04D00] whitespace-nowrap"
+              className="bg-gradient-to-r from-[#FF5A00] to-[#E04D00] text-white font-black text-[10px] py-2 px-0.5 rounded-xl shadow-xs flex items-center justify-center gap-0.5 active:scale-95 cursor-pointer border border-[#E04D00] whitespace-nowrap"
               title="Cobrar con terminal Clip Wi-Fi"
             >
               <CreditCard className="w-3 h-3 shrink-0" />
               <span className="truncate">Tarjeta</span>
+            </button>
+
+            <button
+              id="mobile-unpaid-order-btn"
+              type="button"
+              onClick={handleOpenUnpaidOrderModal}
+              className="bg-gradient-to-r from-emerald-600 to-teal-700 text-white font-black text-[10px] py-2 px-0.5 rounded-xl shadow-xs flex items-center justify-center gap-0.5 active:scale-95 cursor-pointer border border-emerald-400 whitespace-nowrap"
+              title="Guardar como pedido sin cobrar en Encargos y Pedidos"
+            >
+              <ShoppingBag className="w-3 h-3 shrink-0" />
+              <span className="truncate">Sin Cobrar</span>
             </button>
           </div>
         </div>
@@ -4458,6 +4600,17 @@ export const PosCounter: React.FC<PosCounterProps> = ({
           onConfirmCardPayment={(cardDetails) => handleCardCheckout(cardDetails)}
         />
       )}
+
+      {/* Ventana Emergente (Modal): Pedido Sin Cobrar en Mostrador (Encargos y Pedidos) */}
+      <UnpaidOrderModal
+        isOpen={showUnpaidOrderModal}
+        onClose={() => setShowUnpaidOrderModal(false)}
+        ticketItems={ticketItems}
+        totalAmount={total}
+        totalPieces={totalPieces}
+        selectedCustomer={selectedCustomer}
+        onConfirm={handleConfirmUnpaidOrder}
+      />
 
       {/* Ventana Emergente (Modal): Teclado Virtual para Cambio ("Otro Billete") */}
       {showCashNumpad && (
