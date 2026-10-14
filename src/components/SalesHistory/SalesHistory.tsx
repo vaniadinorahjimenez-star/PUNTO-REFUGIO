@@ -47,6 +47,8 @@ import { ThermalTicket } from '../ThermalTicket';
 import { ThermalShiftCutTicket } from '../ShiftCut/ThermalShiftCutTicket';
 import { printOrderTicketDirectToPrinter } from '../../utils/thermalPrinter';
 import { calculateTicketsBreakdown } from '../../utils/productClassification';
+import { WeeklySalesView } from './WeeklySalesView';
+import { MonthlyEarningsView } from './MonthlyEarningsView';
 
 interface SalesHistoryProps {
   tickets: SaleTicket[];
@@ -101,7 +103,11 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
   const [dateFilterMode, setDateFilterMode] = useState<'hoy' | 'ayer' | 'semana' | 'personalizado'>('hoy');
   
-  // Sub-Navigation Module in Historial de Caja
+  // Vista principal de Historial de Ventas (Estilo Punto Zakia)
+  // 'dia' (Historial y corte por día) | 'semana' (Semanal L-D) | 'meses' (Ganancias por mes Enero-Diciembre)
+  const [historyViewMode, setHistoryViewMode] = useState<'dia' | 'semana' | 'meses'>('dia');
+
+  // Sub-Navigation Module in Historial de Caja (para modo día)
   // 'corte_caja' (Mostrador / Turnos) | 'repartos' (Reparto y choferes) | 'pedidos_tienda' (Recoger en tienda) | 'por_cobrar' (Montos pendientes por cobrar)
   const [activeModule, setActiveModule] = useState<'corte_caja' | 'repartos' | 'pedidos_tienda' | 'por_cobrar'>('corte_caja');
 
@@ -279,6 +285,20 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
   // Gran Total de Ventas Globales (Mostrador + Repartos + Pedidos Tienda)
   const grandTotalSales = mostradorTotal + deliveryTotalGenerated + storeOrdersTotalGenerated;
   const grandTotalCollectedCashAndCard = mostradorTotal + deliveryTotalCollected + storeOrdersTotalCollected;
+
+  // E. GASTOS / SALIDAS A PROVEEDORES Y GANANCIA NETA DEL PERÍODO
+  const allOutflowsList = loadOutflows();
+  const relevantPeriodOutflows = allOutflowsList.filter(o => {
+    const oDate = o.date || (o.createdAt ? o.createdAt.split('T')[0] : '');
+    if (dateFilterMode === 'hoy' && oDate !== todayStr) return false;
+    if (dateFilterMode === 'ayer' && oDate !== yesterdayStr) return false;
+    if (dateFilterMode === 'semana' && oDate < sevenDaysAgoStr) return false;
+    if (dateFilterMode === 'personalizado' && oDate !== selectedDate) return false;
+    return true;
+  });
+  const totalPeriodOutflows = relevantPeriodOutflows.reduce((sum, o) => sum + o.amount, 0);
+  const netPeriodProfit = mostradorTotal - totalPeriodOutflows;
+  const netPeriodMargin = mostradorTotal > 0 ? Math.round((netPeriodProfit / mostradorTotal) * 100) : 0;
 
   // --- FILTERS PER VIEW ---
   // Filtered tickets (Corte mostrador)
@@ -662,8 +682,129 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
         </div>
       )}
 
-      {/* 2. TOP MACRO FINANCIAL EXECUTIVE CARDS (Resumen del Día / Período) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+      {/* 2. SELECTOR DE VISTA PRINCIPAL (Estilo Punto de Venta Zakia) */}
+      <div className="bg-white rounded-3xl p-2.5 shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 w-full sm:w-auto">
+          <button
+            type="button"
+            id="history-mode-dia-btn"
+            onClick={() => setHistoryViewMode('dia')}
+            className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              historyViewMode === 'dia'
+                ? 'bg-gradient-to-r from-[#D95D39] to-amber-600 text-white shadow-md scale-102 ring-2 ring-orange-300'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+            }`}
+          >
+            <span>📅</span>
+            <span>Por Día (Caja & Turnos)</span>
+          </button>
+
+          <button
+            type="button"
+            id="history-mode-semana-btn"
+            onClick={() => setHistoryViewMode('semana')}
+            className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              historyViewMode === 'semana'
+                ? 'bg-gradient-to-r from-[#D95D39] to-amber-600 text-white shadow-md scale-102 ring-2 ring-orange-300'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+            }`}
+          >
+            <span>📆</span>
+            <span>Por Semana (Lunes a Domingo)</span>
+          </button>
+
+          <button
+            type="button"
+            id="history-mode-meses-btn"
+            onClick={() => setHistoryViewMode('meses')}
+            className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              historyViewMode === 'meses'
+                ? 'bg-gradient-to-r from-[#D95D39] to-amber-600 text-white shadow-md scale-102 ring-2 ring-orange-300'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+            }`}
+          >
+            <span>📈</span>
+            <span>Ganancias por Mes (Enero, Feb...)</span>
+          </button>
+        </div>
+
+        <div className="text-xs font-bold text-slate-500 hidden md:flex items-center gap-1.5 px-3">
+          <span>Panadería Santa Fé Zakia</span>
+          <span>•</span>
+          <span className="text-emerald-700 font-black">Historial Financiero</span>
+        </div>
+      </div>
+
+      {/* VISTA SEMANAL (Lunes a Domingo) */}
+      {historyViewMode === 'semana' && (
+        <WeeklySalesView
+          tickets={tickets}
+          orders={orders}
+          outflows={allOutflowsList}
+          onSelectDay={(dateStr) => {
+            setSelectedDate(dateStr);
+            setDateFilterMode('personalizado');
+            setHistoryViewMode('dia');
+          }}
+        />
+      )}
+
+      {/* VISTA GANANCIAS POR MES (Enero a Diciembre) */}
+      {historyViewMode === 'meses' && (
+        <MonthlyEarningsView
+          tickets={tickets}
+          orders={orders}
+          outflows={allOutflowsList}
+          onSelectDay={(dateStr) => {
+            setSelectedDate(dateStr);
+            setDateFilterMode('personalizado');
+            setHistoryViewMode('dia');
+          }}
+        />
+      )}
+
+      {/* VISTA DIARIA (Corte de Turnos y Cajas) */}
+      {historyViewMode === 'dia' && (
+        <>
+          {/* Banner Resumen de Ganancia Neta del Día / Período */}
+          <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white rounded-3xl p-4 sm:p-5 shadow-md flex flex-wrap items-center justify-between gap-4 border border-slate-700">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-2xl bg-emerald-500/20 border border-emerald-400 text-emerald-400 flex items-center justify-center text-xl font-black">
+                💵
+              </div>
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                  Balance Financiero del Día ({dateFilterMode === 'hoy' ? 'Hoy' : dateFilterMode === 'ayer' ? 'Ayer' : dateFilterMode === 'semana' ? 'Últimos 7 Días' : selectedDate})
+                </span>
+                <div className="flex items-baseline gap-2 mt-0.5">
+                  <span className="text-2xl sm:text-3xl font-black text-emerald-400">
+                    ${netPeriodProfit.toLocaleString('es-MX')}.00
+                  </span>
+                  <span className="text-xs text-emerald-200 font-bold bg-emerald-950/60 border border-emerald-800/80 px-2 py-0.5 rounded-full">
+                    {netPeriodMargin}% Utilidad Neta
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 sm:gap-6 text-xs font-bold">
+              <div className="bg-white/10 px-3 py-1.5 rounded-xl">
+                <span className="text-slate-400 block text-[10px]">Ventas Mostrador</span>
+                <span className="text-amber-300 font-black">${mostradorTotal.toLocaleString('es-MX')}.00</span>
+              </div>
+              <div className="bg-white/10 px-3 py-1.5 rounded-xl">
+                <span className="text-slate-400 block text-[10px]">Gastos a Proveedores</span>
+                <span className="text-rose-300 font-black">-${totalPeriodOutflows.toLocaleString('es-MX')}.00</span>
+              </div>
+              <div className="bg-white/10 px-3 py-1.5 rounded-xl">
+                <span className="text-slate-400 block text-[10px]">Total Piezas</span>
+                <span className="text-white font-black">{mostradorPieces} pzs</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. TOP MACRO FINANCIAL EXECUTIVE CARDS (Resumen del Día / Período) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
         {/* CARD 1: CORTE DEL DÍA / MOSTRADOR */}
         <div 
           onClick={() => setActiveModule('corte_caja')}
@@ -1958,6 +2099,8 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
             </div>
           </div>
         </div>
+      )}
+        </>
       )}
 
       {/* =========================================================================
