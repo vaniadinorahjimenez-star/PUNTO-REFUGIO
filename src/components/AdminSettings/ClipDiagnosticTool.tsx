@@ -21,6 +21,8 @@ import {
   getStoredClipConfig, 
   saveClipConfig, 
   DEFAULT_CLIP_SERIAL,
+  DEFAULT_CLIP_API_KEY,
+  DEFAULT_CLIP_SECRET_KEY,
   executeClipPaymentFetch 
 } from '../../services/clipService';
 
@@ -35,8 +37,8 @@ export const ClipDiagnosticTool: React.FC<ClipDiagnosticToolProps> = ({
 }) => {
   const [storedConfig, setStoredConfig] = useState(getStoredClipConfig());
   const [serial, setSerial] = useState<string>(storedConfig.serialNumber || DEFAULT_CLIP_SERIAL);
-  const [apiKey, setApiKey] = useState<string>(storedConfig.apiKey || 'a7c54f1f-9bea-4405-a128-83e8f18f9d32');
-  const [secretKey, setSecretKey] = useState<string>(storedConfig.secretKey || '9d0167db-964e-459b-bada-b758d301f792');
+  const [apiKey, setApiKey] = useState<string>(storedConfig.apiKey || DEFAULT_CLIP_API_KEY);
+  const [secretKey, setSecretKey] = useState<string>(storedConfig.secretKey || DEFAULT_CLIP_SECRET_KEY);
   const [terminalAlias, setTerminalAlias] = useState<string>(storedConfig.terminalName || 'Clip Total 2');
   
   const [isLoading, setIsLoading] = useState<boolean>(false);
