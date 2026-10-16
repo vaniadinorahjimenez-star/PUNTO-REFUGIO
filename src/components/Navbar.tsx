@@ -17,6 +17,7 @@ import {
   TrendingUp
 } from 'lucide-react';
 import { Settings as SettingsType } from '../types';
+import { FirebaseSyncBadge } from './FirebaseSyncBadge';
 
 export type ActiveTabType = 'pos' | 'orders' | 'bakers' | 'analytics' | 'delivery' | 'loyalty' | 'history' | 'admin';
 
@@ -273,6 +274,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               </>
             )}
           </div>
+
+          {/* Firebase Real-Time Sync Status Badge */}
+          <FirebaseSyncBadge />
 
           {/* Live Clock */}
           <div className="hidden sm:flex items-center space-x-1.5 bg-[#FAF8F6] px-2.5 py-1 rounded-xl border border-[#E5E1DA] text-slate-700 font-mono font-bold text-xs">

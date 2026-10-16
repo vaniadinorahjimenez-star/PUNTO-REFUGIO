@@ -1,0 +1,125 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Default-deny catch-all to prevent unwanted access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isAdmin() {
+      return isVerified() && request.auth.token.email == 'vaniadinorah.jimenez@gmail.com';
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\.]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Validation blueprints
+    function isValidTicket(data) {
+      return data.keys().hasAll(['id', 'folio', 'date', 'total', 'paymentMethod']) &&
+        data.id is string && data.id.size() <= 128 &&
+        data.folio is string && data.folio.size() <= 64 &&
+        data.date is string && data.date.size() <= 32 &&
+        data.total is number && data.total >= 0 &&
+        data.paymentMethod is string && data.paymentMethod.size() <= 64;
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll(['id', 'folio', 'customerName', 'total', 'paymentStatus']) &&
+        data.id is string && data.id.size() <= 128 &&
+        data.folio is string && data.folio.size() <= 64 &&
+        data.customerName is string && data.customerName.size() <= 128 &&
+        data.total is number && data.total >= 0 &&
+        data.paymentStatus is string && data.paymentStatus.size() <= 64;
+    }
+
+    function isValidShiftCut(data) {
+      return data.keys().hasAll(['id', 'folio', 'date', 'shiftName', 'totalGrossSales']) &&
+        data.id is string && data.id.size() <= 128 &&
+        data.folio is string && data.folio.size() <= 64 &&
+        data.date is string && data.date.size() <= 32 &&
+        data.shiftName is string && data.shiftName.size() <= 64 &&
+        data.totalGrossSales is number && data.totalGrossSales >= 0;
+    }
+
+    function isValidOutflow(data) {
+      return data.keys().hasAll(['id', 'amount', 'concept', 'date']) &&
+        data.id is string && data.id.size() <= 128 &&
+        data.amount is number && data.amount >= 0 &&
+        data.concept is string && data.concept.size() <= 256 &&
+        data.date is string && data.date.size() <= 32;
+    }
+
+    function isValidCustomer(data) {
+      return data.keys().hasAll(['id', 'name', 'phone']) &&
+        data.id is string && data.id.size() <= 128 &&
+        data.name is string && data.name.size() <= 128 &&
+        data.phone is string && data.phone.size() <= 64;
+    }
+
+    function isValidSettings(data) {
+      return data.keys().hasAll(['bakeryName']) &&
+        data.bakeryName is string && data.bakeryName.size() <= 128;
+    }
+
+    // Match rules for collections
+    match /tickets/{ticketId} {
+      allow read: if isVerified();
+      allow create: if isVerified() && isValidId(ticketId) && isValidTicket(incoming());
+      allow update: if isVerified() && isValidId(ticketId) && isValidTicket(incoming());
+      allow delete: if isAdmin() && isValidId(ticketId);
+    }
+
+    match /orders/{orderId} {
+      allow read: if isVerified();
+      allow create: if isVerified() && isValidId(orderId) && isValidOrder(incoming());
+      allow update: if isVerified() && isValidId(orderId) && isValidOrder(incoming());
+      allow delete: if isAdmin() && isValidId(orderId);
+    }
+
+    match /shiftCuts/{cutId} {
+      allow read: if isVerified();
+      allow create: if isVerified() && isValidId(cutId) && isValidShiftCut(incoming());
+      allow update: if isVerified() && isValidId(cutId) && isValidShiftCut(incoming());
+      allow delete: if isAdmin() && isValidId(cutId);
+    }
+
+    match /outflows/{outflowId} {
+      allow read: if isVerified();
+      allow create: if isVerified() && isValidId(outflowId) && isValidOutflow(incoming());
+      allow update: if isVerified() && isValidId(outflowId) && isValidOutflow(incoming());
+      allow delete: if isAdmin() && isValidId(outflowId);
+    }
+
+    match /customers/{customerId} {
+      allow read: if isVerified();
+      allow create: if isVerified() && isValidId(customerId) && isValidCustomer(incoming());
+      allow update: if isVerified() && isValidId(customerId) && isValidCustomer(incoming());
+      allow delete: if isAdmin() && isValidId(customerId);
+    }
+
+    match /settings/{settingsId} {
+      allow read: if isVerified();
+      allow create, update: if isVerified() && isValidId(settingsId) && isValidSettings(incoming());
+      allow delete: if isAdmin() && isValidId(settingsId);
+    }
+  }
+}

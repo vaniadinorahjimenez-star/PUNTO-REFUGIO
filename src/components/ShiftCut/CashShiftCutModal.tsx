@@ -42,6 +42,7 @@ import { playBeep, playCashSound, playCelebrationFanfare } from '../../utils/aud
 import { ThermalShiftCutTicket } from './ThermalShiftCutTicket';
 import { CashDenominationSelector, calculateDenominationsTotal } from './CashDenominationSelector';
 import { calculateTicketsBreakdown } from '../../utils/productClassification';
+import { saveShiftCutToFirestore, saveOutflowToFirestore } from '../../services/firebaseSyncService';
 
 interface CashShiftCutModalProps {
   isOpen: boolean;
@@ -390,6 +391,7 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
     const updated = [newItem, ...allOutflows];
     setAllOutflows(updated);
     saveOutflows(updated);
+    saveOutflowToFirestore(newItem).catch(err => console.warn('Outflow Firestore sync:', err));
 
     playCashSound();
     setNewConcept('');
@@ -463,6 +465,7 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
 
     const existingCuts = loadShiftCuts();
     saveShiftCuts([newCut, ...existingCuts]);
+    saveShiftCutToFirestore(newCut).catch(err => console.warn('ShiftCut Firestore sync:', err));
 
     if (onCutSaved) {
       onCutSaved(newCut);
