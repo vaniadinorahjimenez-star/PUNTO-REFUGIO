@@ -1535,7 +1535,8 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({
                   onClick={() => {
                     playBeep(800, 'sine', 0.04);
                     saveClipConfig(clipConfig);
-                    alert(`Configuración de Clip guardada exitosamente.\nSerie: ${clipConfig.serialNumber}`);
+                    setSavedSuccess(true);
+                    setTimeout(() => setSavedSuccess(false), 3000);
                   }}
                   className="bg-[#FF5A00] hover:bg-[#E04D00] text-white font-black px-4 py-2 rounded-xl text-xs shadow-xs cursor-pointer shrink-0"
                 >
@@ -1625,7 +1626,8 @@ export const AdminSettings: React.FC<AdminSettingsProps> = ({
               onClick={() => {
                 if (confirm('¿Deseas restablecer todos los datos a los valores de fábrica?')) {
                   onResetData();
-                  alert('Datos restablecidos con éxito.');
+                  setSavedSuccess(true);
+                  setTimeout(() => setSavedSuccess(false), 3000);
                 }
               }}
               className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-3.5 py-2 rounded-xl text-xs transition-colors"

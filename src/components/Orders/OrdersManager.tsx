@@ -391,7 +391,8 @@ export const OrdersManager: React.FC<OrdersManagerProps> = ({
   const handleCreateOrder = (e: React.FormEvent) => {
     e.preventDefault();
     if (orderItems.length === 0) {
-      alert('Por favor agrega al menos un producto de pan al pedido');
+      setPrintNotice('⚠️ Por favor agrega al menos un producto de pan al pedido');
+      setTimeout(() => setPrintNotice(''), 3000);
       return;
     }
 

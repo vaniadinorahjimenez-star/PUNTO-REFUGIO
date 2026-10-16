@@ -58,6 +58,7 @@ export const ClipDiagnosticTool: React.FC<ClipDiagnosticToolProps> = ({
   const [rawResponseText, setRawResponseText] = useState<string>('');
   const [parsedData, setParsedData] = useState<any>(null);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
+  const [saveSuccessNotice, setSaveSuccessNotice] = useState<string | null>(null);
 
   // Ejecutar diagnóstico automáticamente la primera vez
   useEffect(() => {
@@ -178,7 +179,8 @@ export const ClipDiagnosticTool: React.FC<ClipDiagnosticToolProps> = ({
     saveClipConfig(updated);
     setStoredConfig(updated);
     if (onConfigUpdated) onConfigUpdated();
-    alert('Credenciales, alias Clip Total 2 y número de serie guardados en la configuración de la panadería.');
+    setSaveSuccessNotice('Credenciales, alias Clip Total 2 y número de serie guardados en la configuración de la panadería.');
+    setTimeout(() => setSaveSuccessNotice(null), 3500);
   };
 
   const handleResetToDefaultSerial = () => {
@@ -308,6 +310,12 @@ export const ClipDiagnosticTool: React.FC<ClipDiagnosticToolProps> = ({
             Guardar estos valores en la panadería
           </button>
         </div>
+
+        {saveSuccessNotice && (
+          <div className="p-2.5 bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-xl text-xs font-bold animate-in fade-in">
+            ✅ {saveSuccessNotice}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {/* Alias */}

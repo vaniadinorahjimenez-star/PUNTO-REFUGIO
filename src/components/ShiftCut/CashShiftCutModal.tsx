@@ -140,6 +140,7 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
   const [newAmount, setNewAmount] = useState<string>('');
   const [newRecipient, setNewRecipient] = useState<string>('');
   const [newNotes, setNewNotes] = useState<string>('');
+  const [outflowError, setOutflowError] = useState<string | null>(null);
 
   // Observaciones y Notas
   const [notes, setNotes] = useState<string>('');
@@ -370,9 +371,10 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
   // Outflow Handlers
   const handleAddOutflow = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    setOutflowError(null);
     const amountNum = parseFloat(newAmount);
     if (!newConcept.trim() || isNaN(amountNum) || amountNum <= 0) {
-      alert('Por favor escribe el concepto y un monto válido para la salida.');
+      setOutflowError('Por favor escribe el concepto y un monto válido para la salida.');
       return;
     }
 
@@ -1152,6 +1154,12 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
                       <X className="w-4 h-4" />
                     </button>
                   </div>
+
+                  {outflowError && (
+                    <div className="p-2 bg-rose-100 border border-rose-300 text-rose-900 rounded-xl text-xs font-bold mb-2">
+                      ⚠️ {outflowError}
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <div>

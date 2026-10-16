@@ -43,10 +43,12 @@ export const UnpaidOrderModal: React.FC<UnpaidOrderModalProps> = ({
   const [notes, setNotes] = useState<string>('');
   const [shouldPrint, setShouldPrint] = useState<boolean>(true);
   const [customTotalInput, setCustomTotalInput] = useState<string>('');
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   // Auto-llenar si ya había cliente seleccionado en mostrador al abrir
   useEffect(() => {
     if (isOpen) {
+      setValidationError(null);
       if (selectedCustomer) {
         setCustomerName(selectedCustomer.name);
         setCustomerPhone(selectedCustomer.phone);
@@ -84,16 +86,17 @@ export const UnpaidOrderModal: React.FC<UnpaidOrderModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setValidationError(null);
     const trimmed = customerName.trim();
     if (!trimmed) {
       playBeep(400, 'sawtooth', 0.08);
-      alert('Por favor escribe o selecciona el nombre del cliente');
+      setValidationError('Por favor escribe o selecciona el nombre del cliente');
       return;
     }
 
     if (ticketItems.length === 0 && effectiveTotal <= 0) {
       playBeep(400, 'sawtooth', 0.08);
-      alert('El pedido debe tener al menos un producto o un importe total');
+      setValidationError('El pedido debe tener al menos un producto o un importe total');
       return;
     }
 
@@ -151,6 +154,11 @@ export const UnpaidOrderModal: React.FC<UnpaidOrderModalProps> = ({
 
         {/* Cuerpo del Modal */}
         <form onSubmit={handleSubmit} className="p-4 space-y-3.5 overflow-y-auto flex-1">
+          {validationError && (
+            <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-semibold">
+              ⚠️ {validationError}
+            </div>
+          )}
           
           {/* Tarjeta de Resumen del Mostrador */}
           <div className="bg-gradient-to-r from-amber-50/80 to-orange-50/80 border border-amber-300 rounded-xl p-3 shadow-2xs">

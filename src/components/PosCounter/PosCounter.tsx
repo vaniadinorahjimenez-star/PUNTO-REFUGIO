@@ -1127,7 +1127,8 @@ export const PosCounter: React.FC<PosCounterProps> = ({
     const name = orderItemNameInput.trim() || catalogItemSearch.trim();
     if (!name) {
       playBeep(400, 'sawtooth', 0.06);
-      alert('Escribe o selecciona un pan del catálogo');
+      setPrintToastNotice('⚠️ Escribe o selecciona un pan del catálogo');
+      setTimeout(() => setPrintToastNotice(''), 3000);
       return;
     }
 
@@ -1261,7 +1262,8 @@ export const PosCounter: React.FC<PosCounterProps> = ({
   const handleGenerateStoreOrder = () => {
     if (orderModalItems.length === 0) {
       playBeep(400, 'sawtooth', 0.08);
-      alert('Por favor agrega al menos un pan en Productos por Entregar.');
+      setPrintToastNotice('⚠️ Por favor agrega al menos un pan en Productos por Entregar.');
+      setTimeout(() => setPrintToastNotice(''), 3000);
       return;
     }
 

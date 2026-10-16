@@ -44,6 +44,7 @@ export const LoyaltyManager: React.FC<LoyaltyManagerProps> = ({
   const [newName, setNewName] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [initialBonusPoints, setInitialBonusPoints] = useState(10); // 10 pts welcome gift
+  const [registerError, setRegisterError] = useState<string | null>(null);
 
   // Adjustment Modal
   const [showAdjustModal, setShowAdjustModal] = useState(false);
@@ -61,15 +62,16 @@ export const LoyaltyManager: React.FC<LoyaltyManagerProps> = ({
 
   const handleRegisterSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setRegisterError(null);
     const cleanPhone = newPhone.replace(/\D/g, '').slice(0, 10);
     if (cleanPhone.length < 10) {
-      alert('Por favor ingrese un teléfono válido de 10 dígitos.');
+      setRegisterError('Por favor ingrese un teléfono válido de 10 dígitos.');
       return;
     }
 
     const existing = customers.find(c => c.phone.replace(/\D/g, '') === cleanPhone);
     if (existing) {
-      alert(`Este número ya está registrado en el Club de Puntos: ${existing.phone}`);
+      setRegisterError(`Este número ya está registrado en el Club de Puntos: ${existing.phone}`);
       return;
     }
 
@@ -460,6 +462,11 @@ export const LoyaltyManager: React.FC<LoyaltyManagerProps> = ({
             </div>
 
             <form onSubmit={handleRegisterSubmit} className="p-5 space-y-4">
+              {registerError && (
+                <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-semibold">
+                  ⚠️ {registerError}
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
                   Número Celular (10 dígitos) *

@@ -3,6 +3,8 @@ import {
   getAuth, 
   GoogleAuthProvider, 
   signInWithPopup, 
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   signOut, 
   onAuthStateChanged, 
   type User 
@@ -80,4 +82,11 @@ export async function testConnection(): Promise<void> {
 
 testConnection();
 
-export { signInWithPopup, signOut, onAuthStateChanged, type User };
+export { 
+  signInWithPopup, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signOut, 
+  onAuthStateChanged, 
+  type User 
+};

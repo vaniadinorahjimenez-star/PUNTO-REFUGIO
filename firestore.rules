@@ -13,11 +13,14 @@ service cloud.firestore {
     }
 
     function isVerified() {
-      return isSignedIn() && request.auth.token.email_verified == true;
+      return isSignedIn() && (
+        request.auth.token.email_verified == true || 
+        request.auth.token.firebase.sign_in_provider == 'password'
+      );
     }
 
     function isAdmin() {
-      return isVerified() && request.auth.token.email == 'vaniadinorah.jimenez@gmail.com';
+      return isSignedIn() && request.auth.token.email == 'vaniadinorah.jimenez@gmail.com';
     }
 
     function isValidId(id) {
@@ -120,6 +123,10 @@ service cloud.firestore {
       allow read: if isVerified();
       allow create, update: if isVerified() && isValidId(settingsId) && isValidSettings(incoming());
       allow delete: if isAdmin() && isValidId(settingsId);
+    }
+
+    match /test/{docId} {
+      allow read: if true;
     }
   }
 }

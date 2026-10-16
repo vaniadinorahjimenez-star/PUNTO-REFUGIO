@@ -14,6 +14,8 @@ import {
   auth, 
   googleProvider, 
   signInWithPopup, 
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   signOut, 
   onAuthStateChanged, 
   type User,
@@ -501,16 +503,82 @@ export async function syncAllLocalDataToFirestore(): Promise<{ success: boolean;
 }
 
 /**
+ * Interpreta errores comunes de Firebase Auth en mensajes claros en español
+ */
+export function formatFirebaseAuthError(err: any): string {
+  const code = err?.code || '';
+  const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
+  
+  switch (code) {
+    case 'auth/unauthorized-domain':
+      return `El dominio actual (${currentHost}) no está en los Dominios Autorizados de Firebase. Agrégalo en Firebase Console > Authentication > Settings > Authorized Domains.`;
+    case 'auth/popup-blocked':
+      return 'La ventana emergente de Google fue bloqueada por tu navegador. Permite ventanas emergentes o inicia sesión con correo y contraseña.';
+    case 'auth/popup-closed-by-user':
+      return 'Se cerró la ventana de autenticación antes de completar el inicio de sesión.';
+    case 'auth/cancelled-popup-request':
+      return 'Se canceló la solicitud de autenticación anterior.';
+    case 'auth/email-already-in-use':
+      return 'Este correo ya está registrado. Por favor selecciona "Iniciar Sesión" en vez de registrar.';
+    case 'auth/weak-password':
+      return 'La contraseña es muy débil. Usa al menos 6 caracteres.';
+    case 'auth/invalid-email':
+      return 'El formato de correo no es válido.';
+    case 'auth/user-not-found':
+    case 'auth/wrong-password':
+    case 'auth/invalid-credential':
+      return 'Correo o contraseña incorrectos. Verifica tus datos o crea una cuenta nueva.';
+    case 'auth/operation-not-allowed':
+      return 'El proveedor de inicio de sesión no está habilitado en Firebase Console > Authentication > Sign-in method.';
+    case 'auth/network-request-failed':
+      return 'Error de conexión de red. Verifica tu internet e inténtalo de nuevo.';
+    default:
+      return err?.message || 'Error al comunicarse con Firebase Authentication.';
+  }
+}
+
+/**
  * Iniciar sesión con Google para habilitar sincronización en tiempo real
  */
 export async function loginWithGoogle(): Promise<User | null> {
   try {
     const cred = await signInWithPopup(auth, googleProvider);
     return cred.user;
-  } catch (err) {
+  } catch (err: any) {
     console.error('Error al iniciar sesión con Google:', err);
-    updateState({ syncStatus: 'error', errorMessage: 'No se pudo iniciar sesión con Google' });
-    throw err;
+    const friendlyMsg = formatFirebaseAuthError(err);
+    updateState({ syncStatus: 'error', errorMessage: friendlyMsg });
+    throw new Error(friendlyMsg);
+  }
+}
+
+/**
+ * Registrar una nueva cuenta con correo y contraseña en Firebase
+ */
+export async function registerWithEmail(email: string, pass: string): Promise<User | null> {
+  try {
+    const cred = await createUserWithEmailAndPassword(auth, email.trim(), pass);
+    return cred.user;
+  } catch (err: any) {
+    console.error('Error al registrar usuario en Firebase:', err);
+    const friendlyMsg = formatFirebaseAuthError(err);
+    updateState({ syncStatus: 'error', errorMessage: friendlyMsg });
+    throw new Error(friendlyMsg);
+  }
+}
+
+/**
+ * Iniciar sesión con correo y contraseña en Firebase
+ */
+export async function loginWithEmail(email: string, pass: string): Promise<User | null> {
+  try {
+    const cred = await signInWithEmailAndPassword(auth, email.trim(), pass);
+    return cred.user;
+  } catch (err: any) {
+    console.error('Error al iniciar sesión con correo en Firebase:', err);
+    const friendlyMsg = formatFirebaseAuthError(err);
+    updateState({ syncStatus: 'error', errorMessage: friendlyMsg });
+    throw new Error(friendlyMsg);
   }
 }
 
@@ -520,7 +588,7 @@ export async function loginWithGoogle(): Promise<User | null> {
 export async function logoutGoogle(): Promise<void> {
   stopFirestoreRealtimeSync();
   await signOut(auth);
-  updateState({ user: null, isFirebaseConnected: false, syncStatus: 'unauthenticated' });
+  updateState({ user: null, isFirebaseConnected: false, syncStatus: 'unauthenticated', errorMessage: undefined });
 }
 
 // Inicializar listener de estado de autenticación
