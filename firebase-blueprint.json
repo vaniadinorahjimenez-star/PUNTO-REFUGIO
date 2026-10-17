@@ -2,7 +2,7 @@
   "entities": {
     "SaleTicket": {
       "title": "SaleTicket",
-      "description": "Ticket de venta del punto de venta Santa Fe / Punto Zákia",
+      "description": "Registro de venta realizada en caja o mostrador de Panadería Santa Fé",
       "type": "object",
       "properties": {
         "id": {
@@ -12,40 +12,64 @@
         },
         "folio": {
           "type": "string",
-          "description": "Folio correlativo del ticket (ej. T-001005)",
-          "maxLength": 32
+          "description": "Folio numérico del ticket (ej. T-001005)",
+          "maxLength": 64
         },
         "timestamp": {
           "type": "string",
-          "description": "ISO timestamp de la venta",
+          "description": "Marca de tiempo ISO del registro",
           "maxLength": 64
         },
         "date": {
           "type": "string",
-          "description": "Fecha en formato YYYY-MM-DD",
-          "maxLength": 16
+          "description": "Fecha de la venta en formato YYYY-MM-DD",
+          "maxLength": 32
         },
         "time": {
           "type": "string",
-          "description": "Hora de la venta (ej. 08:30:15)",
+          "description": "Hora de la venta (HH:MM o HH:MM:SS)",
           "maxLength": 16
+        },
+        "items": {
+          "type": "array",
+          "description": "Lista de piezas de pan o productos vendidos"
         },
         "subtotal": {
           "type": "number",
-          "description": "Subtotal de la venta sin descuento"
+          "description": "Subtotal de la venta en pesos"
         },
         "discount": {
           "type": "number",
-          "description": "Descuento monetario aplicado"
+          "description": "Descuento aplicado en pesos"
         },
         "total": {
           "type": "number",
-          "description": "Total final cobrado"
+          "description": "Total final cobrado en pesos"
         },
         "paymentMethod": {
           "type": "string",
           "description": "Método de pago utilizado",
-          "maxLength": 32
+          "enum": ["efectivo", "tarjeta"]
+        },
+        "cardTerminal": {
+          "type": "string",
+          "description": "Terminal usada si fue tarjeta (zettle, clip, terminal_bancaria, otro)",
+          "maxLength": 64
+        },
+        "cardAuthCode": {
+          "type": "string",
+          "description": "Código de autorización de tarjeta",
+          "maxLength": 64
+        },
+        "cardReference": {
+          "type": "string",
+          "description": "Referencia bancaria",
+          "maxLength": 128
+        },
+        "cardLast4": {
+          "type": "string",
+          "description": "Últimos 4 dígitos de la tarjeta",
+          "maxLength": 10
         },
         "amountPaid": {
           "type": "number",
@@ -53,104 +77,77 @@
         },
         "change": {
           "type": "number",
-          "description": "Cambio devuelto"
-        },
-        "cashier": {
-          "type": "string",
-          "description": "Nombre o identificador del cajero",
-          "maxLength": 64
-        },
-        "shift": {
-          "type": "string",
-          "description": "Turno en que se cobró (turno1 | turno2)",
-          "maxLength": 16
-        }
-      },
-      "required": ["id", "folio", "date", "total", "paymentMethod"]
-    },
-    "BakeryOrder": {
-      "title": "BakeryOrder",
-      "description": "Pedido especial, de reparto o mostrador",
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Identificador único del pedido",
-          "maxLength": 128
-        },
-        "folio": {
-          "type": "string",
-          "description": "Folio de pedido (ej. PED-0105)",
-          "maxLength": 32
+          "description": "Cambio devuelto al cliente"
         },
         "customerName": {
           "type": "string",
-          "description": "Nombre del cliente del pedido",
+          "description": "Nombre del cliente si está registrado",
           "maxLength": 128
         },
         "customerPhone": {
           "type": "string",
-          "description": "Teléfono de contacto",
+          "description": "Teléfono del cliente",
           "maxLength": 32
         },
-        "deliveryDate": {
+        "pointsEarned": {
+          "type": "number",
+          "description": "Puntos de lealtad generados"
+        },
+        "pointsRedeemed": {
+          "type": "number",
+          "description": "Puntos de lealtad canjeados"
+        },
+        "cashier": {
           "type": "string",
-          "description": "Fecha de entrega YYYY-MM-DD",
-          "maxLength": 16
+          "description": "Nombre de la caja o cajero",
+          "maxLength": 64
         },
-        "total": {
-          "type": "number",
-          "description": "Monto total del pedido"
-        },
-        "deposit": {
-          "type": "number",
-          "description": "Anticipo dejado"
-        },
-        "pendingAmount": {
-          "type": "number",
-          "description": "Monto pendiente por liquidar"
-        },
-        "paymentStatus": {
+        "shift": {
           "type": "string",
-          "description": "Estado de pago (pagado | pendiente)",
+          "description": "Turno en que se vendió (turno1, turno2)",
           "maxLength": 32
         },
-        "deliveryStatus": {
+        "userId": {
           "type": "string",
-          "description": "Estado de entrega (pendiente | en_camino | entregado)",
-          "maxLength": 32
+          "description": "ID del usuario o cajero autenticado en Firebase",
+          "maxLength": 128
         }
       },
-      "required": ["id", "folio", "customerName", "total", "paymentStatus"]
+      "required": ["id", "folio", "date", "subtotal", "total", "paymentMethod"]
     },
     "ShiftCutRecord": {
       "title": "ShiftCutRecord",
-      "description": "Corte de caja de turno con balance de efectivo, tarjeta y salidas",
+      "description": "Registro de corte de caja de turno de panadería",
       "type": "object",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Identificador único del corte",
+          "description": "ID del corte",
           "maxLength": 128
         },
         "folio": {
           "type": "string",
-          "description": "Folio del corte (ej. CORTE-0101)",
-          "maxLength": 32
+          "description": "Folio del corte (CORTE-0101)",
+          "maxLength": 64
         },
         "date": {
           "type": "string",
-          "description": "Fecha del corte YYYY-MM-DD",
-          "maxLength": 16
+          "description": "Fecha del corte",
+          "maxLength": 32
         },
-        "shiftName": {
+        "time": {
           "type": "string",
-          "description": "Nombre del turno",
-          "maxLength": 64
+          "description": "Hora del corte",
+          "maxLength": 16
         },
         "cashierName": {
           "type": "string",
           "description": "Nombre del cajero",
+          "maxLength": 64
+        },
+        "shiftName": {
+          "type": "string",
+          "description": "Nombre del turno",
           "maxLength": 64
         },
         "totalGrossSales": {
@@ -159,64 +156,123 @@
         },
         "totalCashSales": {
           "type": "number",
-          "description": "Venta en efectivo"
+          "description": "Venta total en efectivo"
         },
         "totalCardSales": {
           "type": "number",
-          "description": "Venta con tarjeta"
+          "description": "Venta total en tarjeta"
         },
         "totalOutflows": {
           "type": "number",
-          "description": "Total de salidas pagadas"
+          "description": "Total de salidas de efectivo"
+        },
+        "expectedInBag": {
+          "type": "number",
+          "description": "Monto esperado a entregar en bolsita"
+        },
+        "actualInBag": {
+          "type": "number",
+          "description": "Monto real contado en bolsita"
+        },
+        "bagDifference": {
+          "type": "number",
+          "description": "Diferencia de cuadre"
+        },
+        "ticketsCount": {
+          "type": "number",
+          "description": "Número de tickets en el turno"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Observaciones del corte",
+          "maxLength": 500
+        },
+        "userId": {
+          "type": "string",
+          "description": "ID del usuario o cajero autenticado en Firebase",
+          "maxLength": 128
         }
       },
-      "required": ["id", "folio", "date", "shiftName", "totalGrossSales"]
+      "required": ["id", "folio", "date", "shiftName", "totalGrossSales", "totalCashSales"]
     },
-    "CashOutflowItem": {
-      "title": "CashOutflowItem",
-      "description": "Salida o gasto de dinero pagado desde caja",
+    "BakeryOrder": {
+      "title": "BakeryOrder",
+      "description": "Pedido de panadería programado para reparto o mostrador",
       "type": "object",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Identificador único de la salida",
+          "description": "ID del pedido",
           "maxLength": 128
         },
-        "amount": {
+        "folio": {
+          "type": "string",
+          "description": "Folio del pedido (PED-0106)",
+          "maxLength": 64
+        },
+        "customerName": {
+          "type": "string",
+          "description": "Nombre del cliente",
+          "maxLength": 128
+        },
+        "customerPhone": {
+          "type": "string",
+          "description": "Teléfono del cliente",
+          "maxLength": 32
+        },
+        "deliveryType": {
+          "type": "string",
+          "description": "Tipo de entrega",
+          "maxLength": 32
+        },
+        "deliveryDate": {
+          "type": "string",
+          "description": "Fecha de entrega",
+          "maxLength": 32
+        },
+        "deliveryTime": {
+          "type": "string",
+          "description": "Hora de entrega",
+          "maxLength": 16
+        },
+        "total": {
           "type": "number",
-          "description": "Monto de la salida"
+          "description": "Monto total del pedido"
         },
-        "concept": {
-          "type": "string",
-          "description": "Concepto o motivo del gasto",
-          "maxLength": 256
+        "deposit": {
+          "type": "number",
+          "description": "Anticipo pagado"
         },
-        "date": {
-          "type": "string",
-          "description": "Fecha de la salida YYYY-MM-DD",
-          "maxLength": 16
+        "pendingAmount": {
+          "type": "number",
+          "description": "Saldo pendiente"
         },
-        "time": {
+        "deliveryStatus": {
           "type": "string",
-          "description": "Hora de la salida",
-          "maxLength": 16
+          "description": "Estado de la entrega",
+          "maxLength": 32
         },
-        "shiftCode": {
+        "paymentStatus": {
           "type": "string",
-          "description": "Turno correspondiente (turno1 | turno2)",
-          "maxLength": 16
+          "description": "Estado del pago",
+          "maxLength": 32
+        },
+        "userId": {
+          "type": "string",
+          "description": "ID del usuario autenticado en Firebase",
+          "maxLength": 128
         }
       },
-      "required": ["id", "amount", "concept", "date"]
+      "required": ["id", "folio", "customerName", "deliveryDate", "total"]
     },
     "Customer": {
       "title": "Customer",
-      "description": "Cliente registrado en sistema de lealtad",
+      "description": "Cliente registrado para programa de lealtad",
       "type": "object",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Identificador único del cliente",
+          "description": "ID del cliente",
           "maxLength": 128
         },
         "name": {
@@ -231,68 +287,92 @@
         },
         "points": {
           "type": "number",
-          "description": "Puntos de lealtad acumulados"
+          "description": "Puntos acumulados"
         },
         "totalSpent": {
           "type": "number",
-          "description": "Total histórico gastado"
+          "description": "Total acumulado gastado"
+        },
+        "visitsCount": {
+          "type": "number",
+          "description": "Número de compras/visitas"
+        },
+        "lastVisit": {
+          "type": "string",
+          "description": "Fecha de última visita",
+          "maxLength": 32
+        },
+        "userId": {
+          "type": "string",
+          "description": "ID del usuario autenticado en Firebase",
+          "maxLength": 128
         }
       },
       "required": ["id", "name", "phone"]
     },
-    "SettingsDoc": {
-      "title": "SettingsDoc",
-      "description": "Configuración general de la panadería",
+    "CashOutflowItem": {
+      "title": "CashOutflowItem",
+      "description": "Salida de efectivo registrada en caja",
       "type": "object",
       "properties": {
-        "bakeryName": {
+        "id": {
           "type": "string",
-          "description": "Nombre de la panadería",
+          "description": "ID de la salida",
           "maxLength": 128
         },
-        "slogan": {
+        "concept": {
           "type": "string",
-          "description": "Eslogan de la panadería",
-          "maxLength": 128
+          "description": "Concepto o motivo del gasto",
+          "maxLength": 200
         },
-        "phone": {
+        "amount": {
+          "type": "number",
+          "description": "Monto de la salida"
+        },
+        "time": {
           "type": "string",
-          "description": "Teléfono oficial",
+          "description": "Hora del registro",
+          "maxLength": 16
+        },
+        "date": {
+          "type": "string",
+          "description": "Fecha del registro",
           "maxLength": 32
         },
-        "address": {
+        "recipient": {
           "type": "string",
-          "description": "Dirección u horario",
-          "maxLength": 256
+          "description": "Proveedor o receptor del dinero",
+          "maxLength": 128
+        },
+        "userId": {
+          "type": "string",
+          "description": "ID del usuario autenticado en Firebase",
+          "maxLength": 128
         }
       },
-      "required": ["bakeryName"]
+      "required": ["id", "concept", "amount"]
     }
   },
   "firestore": {
     "/tickets/{ticketId}": {
       "schema": "SaleTicket",
-      "description": "Colección de tickets de venta registrados en mostrador o tienda"
-    },
-    "/orders/{orderId}": {
-      "schema": "BakeryOrder",
-      "description": "Colección de pedidos de panadería y pedidos sin cobrar"
+      "description": "Colección de tickets de venta de Panadería Santa Fé"
     },
     "/shiftCuts/{cutId}": {
       "schema": "ShiftCutRecord",
-      "description": "Colección de cortes de caja diarios y por turno"
+      "description": "Colección de cortes de caja de turno"
     },
-    "/outflows/{outflowId}": {
-      "schema": "CashOutflowItem",
-      "description": "Colección de salidas de dinero registradas en caja"
+    "/orders/{orderId}": {
+      "schema": "BakeryOrder",
+      "description": "Colección de pedidos de panadería"
     },
     "/customers/{customerId}": {
       "schema": "Customer",
       "description": "Colección de clientes y puntos de lealtad"
     },
-    "/settings/{settingsId}": {
-      "schema": "SettingsDoc",
-      "description": "Documentos de configuración general del negocio"
+    "/outflows/{outflowId}": {
+      "schema": "CashOutflowItem",
+      "description": "Colección de salidas de dinero registradas"
     }
   }
 }

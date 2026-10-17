@@ -134,11 +134,6 @@ let unsubCustomers: (() => void) | null = null;
  * Iniciar escuchas en tiempo real de Firestore
  */
 export function startFirestoreRealtimeSync() {
-  if (!auth.currentUser) {
-    updateState({ syncStatus: 'unauthenticated', isFirebaseConnected: false });
-    return;
-  }
-
   // Cancelar escuchas previas si existen
   stopFirestoreRealtimeSync();
 
@@ -290,10 +285,6 @@ export function stopFirestoreRealtimeSync() {
  * Guardar Ticket directamente en Firestore
  */
 export async function saveTicketToFirestore(ticket: SaleTicket): Promise<boolean> {
-  if (!auth.currentUser) {
-    // Si no está autenticado en Firebase aún, el ticket ya está seguro en localStorage
-    return false;
-  }
   const cleanId = String(ticket.id).replace(/[^a-zA-Z0-9_\-\.]/g, '_');
   const path = `tickets/${cleanId}`;
   try {
@@ -302,7 +293,7 @@ export async function saveTicketToFirestore(ticket: SaleTicket): Promise<boolean
       id: cleanId
     });
     await setDoc(doc(db, 'tickets', cleanId), cleanPayload);
-    updateState({ syncStatus: 'synced', lastSyncTime: Date.now() });
+    updateState({ syncStatus: 'synced', isFirebaseConnected: true, lastSyncTime: Date.now() });
     return true;
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, path);
@@ -313,7 +304,6 @@ export async function saveTicketToFirestore(ticket: SaleTicket): Promise<boolean
  * Guardar Pedido directamente en Firestore
  */
 export async function saveOrderToFirestore(order: BakeryOrder): Promise<boolean> {
-  if (!auth.currentUser) return false;
   const cleanId = String(order.id).replace(/[^a-zA-Z0-9_\-\.]/g, '_');
   const path = `orders/${cleanId}`;
   try {
@@ -322,7 +312,7 @@ export async function saveOrderToFirestore(order: BakeryOrder): Promise<boolean>
       id: cleanId
     });
     await setDoc(doc(db, 'orders', cleanId), cleanPayload);
-    updateState({ syncStatus: 'synced', lastSyncTime: Date.now() });
+    updateState({ syncStatus: 'synced', isFirebaseConnected: true, lastSyncTime: Date.now() });
     return true;
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, path);
@@ -333,7 +323,6 @@ export async function saveOrderToFirestore(order: BakeryOrder): Promise<boolean>
  * Eliminar Pedido de Firestore
  */
 export async function deleteOrderFromFirestore(orderId: string): Promise<boolean> {
-  if (!auth.currentUser) return false;
   const cleanId = String(orderId).replace(/[^a-zA-Z0-9_\-\.]/g, '_');
   const path = `orders/${cleanId}`;
   try {
@@ -348,7 +337,6 @@ export async function deleteOrderFromFirestore(orderId: string): Promise<boolean
  * Guardar Corte de Caja en Firestore
  */
 export async function saveShiftCutToFirestore(cut: ShiftCutRecord): Promise<boolean> {
-  if (!auth.currentUser) return false;
   const cleanId = String(cut.id).replace(/[^a-zA-Z0-9_\-\.]/g, '_');
   const path = `shiftCuts/${cleanId}`;
   try {
@@ -357,7 +345,7 @@ export async function saveShiftCutToFirestore(cut: ShiftCutRecord): Promise<bool
       id: cleanId
     });
     await setDoc(doc(db, 'shiftCuts', cleanId), cleanPayload);
-    updateState({ syncStatus: 'synced', lastSyncTime: Date.now() });
+    updateState({ syncStatus: 'synced', isFirebaseConnected: true, lastSyncTime: Date.now() });
     return true;
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, path);
@@ -368,7 +356,6 @@ export async function saveShiftCutToFirestore(cut: ShiftCutRecord): Promise<bool
  * Guardar Salida de Efectivo en Firestore
  */
 export async function saveOutflowToFirestore(outflow: CashOutflowItem): Promise<boolean> {
-  if (!auth.currentUser) return false;
   const cleanId = String(outflow.id).replace(/[^a-zA-Z0-9_\-\.]/g, '_');
   const path = `outflows/${cleanId}`;
   try {
@@ -377,7 +364,7 @@ export async function saveOutflowToFirestore(outflow: CashOutflowItem): Promise<
       id: cleanId
     });
     await setDoc(doc(db, 'outflows', cleanId), cleanPayload);
-    updateState({ syncStatus: 'synced', lastSyncTime: Date.now() });
+    updateState({ syncStatus: 'synced', isFirebaseConnected: true, lastSyncTime: Date.now() });
     return true;
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, path);
@@ -388,7 +375,6 @@ export async function saveOutflowToFirestore(outflow: CashOutflowItem): Promise<
  * Guardar Cliente en Firestore
  */
 export async function saveCustomerToFirestore(customer: Customer): Promise<boolean> {
-  if (!auth.currentUser) return false;
   const cleanId = String(customer.id).replace(/[^a-zA-Z0-9_\-\.]/g, '_');
   const path = `customers/${cleanId}`;
   try {
@@ -397,7 +383,7 @@ export async function saveCustomerToFirestore(customer: Customer): Promise<boole
       id: cleanId
     });
     await setDoc(doc(db, 'customers', cleanId), cleanPayload);
-    updateState({ syncStatus: 'synced', lastSyncTime: Date.now() });
+    updateState({ syncStatus: 'synced', isFirebaseConnected: true, lastSyncTime: Date.now() });
     return true;
   } catch (err) {
     handleFirestoreError(err, OperationType.WRITE, path);
@@ -409,10 +395,6 @@ export async function saveCustomerToFirestore(customer: Customer): Promise<boole
  * para que nada se pierda y todo esté disponible en el celular inmediatamente.
  */
 export async function syncAllLocalDataToFirestore(): Promise<{ success: boolean; count: number }> {
-  if (!auth.currentUser) {
-    return { success: false, count: 0 };
-  }
-
   updateState({ syncStatus: 'syncing' });
 
   try {

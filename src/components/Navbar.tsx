@@ -14,10 +14,13 @@ import {
   ChevronDown,
   Menu,
   X,
-  TrendingUp
+  TrendingUp,
+  Cloud,
+  Database,
+  RefreshCw,
+  LogOut
 } from 'lucide-react';
 import { Settings as SettingsType } from '../types';
-import { FirebaseSyncBadge } from './FirebaseSyncBadge';
 
 export type ActiveTabType = 'pos' | 'orders' | 'bakers' | 'analytics' | 'delivery' | 'loyalty' | 'history' | 'admin';
 
@@ -30,6 +33,11 @@ interface NavbarProps {
   pendingDeliveriesCount: number;
   zoomLevel: number;
   onToggleZoom: (delta: number) => void;
+  firebaseStatus?: { connected: boolean; userEmail?: string };
+  onConnectFirebase?: () => void;
+  onDisconnectFirebase?: () => void;
+  onManualSync?: () => void;
+  isSyncing?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -40,8 +48,14 @@ export const Navbar: React.FC<NavbarProps> = ({
   pendingProductionCount,
   pendingDeliveriesCount,
   zoomLevel,
-  onToggleZoom
+  onToggleZoom,
+  firebaseStatus,
+  onConnectFirebase,
+  onDisconnectFirebase,
+  onManualSync,
+  isSyncing = false
 }) => {
+  const [showFirebaseModal, setShowFirebaseModal] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = React.useState<string>('');
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
   const [activeCashier, setActiveCashier] = useState<string>(() => {
@@ -275,8 +289,110 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
           </div>
 
-          {/* Firebase Real-Time Sync Status Badge */}
-          <FirebaseSyncBadge />
+          {/* Firebase Connection Status & Cloud Sync (100% Automático) */}
+          <div className="relative">
+            {firebaseStatus?.connected ? (
+              <button
+                type="button"
+                onClick={() => setShowFirebaseModal(!showFirebaseModal)}
+                className="flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-[10px] sm:text-xs font-bold px-2 sm:px-2.5 py-1.5 rounded-xl border border-emerald-300 shadow-2xs transition-all cursor-pointer active:scale-95"
+                title="Firebase Conectado Automáticamente: Sincronización en la nube activa"
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <Cloud className={`w-3.5 h-3.5 text-emerald-600 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span className="hidden md:inline">Firebase Conectado</span>
+                <span className="md:hidden">Firebase OK</span>
+              </button>
+            ) : (
+              <div
+                className="flex items-center gap-1.5 bg-amber-50 text-amber-900 text-[10px] sm:text-xs font-bold px-2 sm:px-2.5 py-1.5 rounded-xl border border-amber-300 shadow-2xs"
+                title="Conectando automáticamente con Firebase..."
+              >
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
+                <Cloud className="w-3.5 h-3.5 text-amber-700 animate-pulse" />
+                <span className="hidden sm:inline">Conectando Firebase...</span>
+                <span className="sm:hidden">Conectando...</span>
+              </div>
+            )}
+
+            {/* Firebase Status & Cloud Sync Modal Popover */}
+            {showFirebaseModal && (
+              <>
+                <div 
+                  className="fixed inset-0 z-40 bg-slate-900/10"
+                  onClick={() => setShowFirebaseModal(false)}
+                />
+                <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border-2 border-emerald-200 p-3.5 z-50 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="flex items-center justify-between pb-2 border-b border-emerald-100">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                        <Database className="w-3.5 h-3.5" />
+                      </div>
+                      <span className="text-xs font-extrabold text-slate-800">
+                        Firebase Cloud Sync
+                      </span>
+                    </div>
+                    <span className="bg-emerald-100 text-emerald-800 text-[9px] font-black px-2 py-0.5 rounded-full uppercase">
+                      Activo
+                    </span>
+                  </div>
+
+                  <div className="py-2.5 space-y-1.5 text-xs text-slate-600">
+                    <div className="flex justify-between items-center">
+                      <span className="text-[11px] text-slate-500">Estado:</span>
+                      <span className="font-bold text-emerald-600 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                        Conectado en tiempo real
+                      </span>
+                    </div>
+                    {firebaseStatus?.userEmail && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-[11px] text-slate-500">Usuario:</span>
+                        <span className="font-medium text-slate-800 truncate max-w-[170px]" title={firebaseStatus.userEmail}>
+                          {firebaseStatus.userEmail}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center">
+                      <span className="text-[11px] text-slate-500">Base de Datos:</span>
+                      <span className="font-mono text-[10px] text-slate-700">Firestore (Santa Fé)</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-[11px] text-slate-500">Ventas en mostrador:</span>
+                      <span className="font-bold text-slate-800">Guardado directo e inmediato</span>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onManualSync?.();
+                        setShowFirebaseModal(false);
+                      }}
+                      className="flex-1 flex items-center justify-center gap-1.5 bg-[#D95D39] hover:bg-[#c44e2c] text-white text-[11px] font-bold py-1.5 px-2.5 rounded-xl transition-all cursor-pointer active:scale-95"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                      <span>Sincronizar Ahora</span>
+                    </button>
+                    {onDisconnectFirebase && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onDisconnectFirebase();
+                          setShowFirebaseModal(false);
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                        title="Cerrar sesión de Firebase"
+                      >
+                        <LogOut className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
 
           {/* Live Clock */}
           <div className="hidden sm:flex items-center space-x-1.5 bg-[#FAF8F6] px-2.5 py-1 rounded-xl border border-[#E5E1DA] text-slate-700 font-mono font-bold text-xs">

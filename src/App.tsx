@@ -54,16 +54,16 @@ import {
   syncWithCloud, 
   fetchAndMergeCloud, 
   onCloudSyncUpdated, 
-  getCloudSyncStatus 
+  getCloudSyncStatus,
+  initFirebaseAutoSync,
+  signInWithGoogle,
+  logoutFirebase
 } from './services/cloudSyncService';
-import { 
-  onFirebaseDataUpdate,
-  saveTicketToFirestore,
+import {
+  saveSaleTicketToFirestore,
   saveOrderToFirestore,
-  deleteOrderFromFirestore,
-  saveCustomerToFirestore,
-  syncAllLocalDataToFirestore
-} from './services/firebaseSyncService';
+  saveCustomerToFirestore
+} from './services/firebase';
 
 export default function App() {
   // Application Data States
@@ -74,6 +74,12 @@ export default function App() {
   const [orders, setOrders] = useState<BakeryOrder[]>(loadOrders);
   const [drivers, setDrivers] = useState<Driver[]>(loadDrivers);
   const [driverCustomers, setDriverCustomers] = useState<DriverCustomer[]>(loadDriverCustomers);
+
+  // Firebase connection and sync states
+  const [firebaseStatus, setFirebaseStatus] = useState<{ connected: boolean; userEmail?: string }>({
+    connected: false
+  });
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
   // Active Navigation Tab
   const [activeTab, setActiveTab] = useState<ActiveTabType>('pos');
@@ -110,34 +116,44 @@ export default function App() {
     saveDriverCustomers(driverCustomers);
   }, [driverCustomers]);
 
-  // Real-Time Firebase and Cloud Synchronization (PC, Celular y Mostrador)
+  // Cloud Synchronization: Combina en lugar de sobreescribir entre Computadora y Teléfono con Firebase
   useEffect(() => {
-    // 1. Escuchar actualizaciones en TIEMPO REAL desde Firebase Firestore
-    const unsubFirebase = onFirebaseDataUpdate((data) => {
-      if (data.tickets && data.tickets.length > 0) {
-        setTickets(prev => mergeTickets(prev, data.tickets!));
-      }
-      if (data.orders && data.orders.length > 0) {
-        setOrders(prev => mergeOrders(prev, data.orders!));
-      }
-      if (data.customers && data.customers.length > 0) {
-        setCustomers(prev => mergeCustomers(prev, data.customers!));
-      }
+    // 1. Inicializar conexión automática con Firebase
+    const unsubFirebase = initFirebaseAutoSync((status) => {
+      setFirebaseStatus(status);
     });
 
-    // 2. Descargar y combinar datos existentes al iniciar
+    // 2. Descargar y combinar datos existentes en la nube al abrir la app
     fetchAndMergeCloud();
 
-    // 3. Escuchar actualizaciones de la nube Netlify de respaldo
-    const unsubscribeCloud = onCloudSyncUpdated((merged) => {
+    // 3. Escuchar actualizaciones de la nube y reflejarlas en el estado sin sobrescribir ventas recientes
+    const unsubscribe = onCloudSyncUpdated((merged) => {
       if (merged.tickets && merged.tickets.length > 0) {
-        setTickets(prev => mergeTickets(prev, merged.tickets));
+        setTickets(prev => {
+          const combined = mergeTickets(prev, merged.tickets);
+          if (combined.length === prev.length && combined.every((t, i) => t.id === prev[i]?.id)) {
+            return prev;
+          }
+          return combined;
+        });
       }
       if (merged.orders && merged.orders.length > 0) {
-        setOrders(prev => mergeOrders(prev, merged.orders));
+        setOrders(prev => {
+          const combined = mergeOrders(prev, merged.orders);
+          if (combined.length === prev.length && combined.every((o, i) => o.id === prev[i]?.id)) {
+            return prev;
+          }
+          return combined;
+        });
       }
       if (merged.customers && merged.customers.length > 0) {
-        setCustomers(prev => mergeCustomers(prev, merged.customers));
+        setCustomers(prev => {
+          const combined = mergeCustomers(prev, merged.customers);
+          if (combined.length === prev.length && combined.every((c, i) => c.id === prev[i]?.id)) {
+            return prev;
+          }
+          return combined;
+        });
       }
     });
 
@@ -153,10 +169,16 @@ export default function App() {
     };
     window.addEventListener('storage', handleStorageChange);
 
+    // 5. Chequeo periódico en segundo plano cada 30 segundos
+    const syncInterval = setInterval(() => {
+      fetchAndMergeCloud();
+    }, 30000);
+
     return () => {
       unsubFirebase();
-      unsubscribeCloud();
+      unsubscribe();
       window.removeEventListener('storage', handleStorageChange);
+      clearInterval(syncInterval);
     };
   }, []);
 
@@ -168,9 +190,40 @@ export default function App() {
     return () => clearTimeout(timeout);
   }, [tickets, orders, customers]);
 
-  // Handlers con garantía síncrona local + réplica inmediata a Firebase
+  const handleConnectFirebase = async () => {
+    setIsSyncing(true);
+    try {
+      await signInWithGoogle();
+      await fetchAndMergeCloud();
+    } catch (err) {
+      console.warn('Conexión con Firebase cancelada o error:', err);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleDisconnectFirebase = async () => {
+    try {
+      await logoutFirebase();
+      setFirebaseStatus({ connected: false });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    try {
+      await syncWithCloud({ tickets, orders, customers });
+      await fetchAndMergeCloud();
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Handlers
   const handleSaveTicket = (newTicket: SaleTicket, updatedCustomer?: Customer) => {
-    // 1. Guardar de forma SÍNCRONA e inmediata en localStorage antes de cualquier otra cosa
+    // 1. Guardar de forma SÍNCRONA e inmediata en localStorage antes de cualquier otra cosa (cero latencia en caja)
     const currentTickets = loadTickets();
     const merged = mergeTickets([newTicket], currentTickets);
     localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(merged));
@@ -191,12 +244,19 @@ export default function App() {
         localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(updatedList));
         return updatedList;
       });
-      saveCustomerToFirestore(updatedCustomer).catch(err => console.warn('Customer Firestore sync:', err));
     }
 
-    // 3. Guardar de inmediato en Firestore para tiempo real en celular
-    saveTicketToFirestore(newTicket).catch(err => console.warn('Ticket Firestore sync:', err));
-    syncWithCloud({ tickets: merged });
+    // 3. Guardar en Firebase Firestore de inmediato y de forma segura
+    saveSaleTicketToFirestore(newTicket).catch(err => {
+      console.warn('Venta respaldada localmente, sincronización pendiente:', err);
+    });
+
+    if (updatedCustomer) {
+      saveCustomerToFirestore(updatedCustomer).catch(console.warn);
+    }
+
+    // 4. Disparar sincronización con la nube con los datos actualizados
+    syncWithCloud({ tickets: merged, customers: updatedCustomer ? [updatedCustomer] : [] });
   };
 
   const handleUpdateTicket = (updatedTicket: SaleTicket) => {
@@ -205,7 +265,8 @@ export default function App() {
       saveTickets(updated, true);
       return updated;
     });
-    saveTicketToFirestore(updatedTicket).catch(err => console.warn('Update ticket Firestore sync:', err));
+    saveSaleTicketToFirestore(updatedTicket).catch(console.warn);
+    syncWithCloud({ tickets: [updatedTicket] });
   };
 
   const handleDeleteTicket = (ticketId: string) => {
@@ -216,24 +277,28 @@ export default function App() {
 
   const handleRegisterCustomer = (newCustomer: Customer) => {
     setCustomers(prev => [newCustomer, ...prev]);
-    saveCustomerToFirestore(newCustomer).catch(err => console.warn('Register customer Firestore sync:', err));
+    saveCustomerToFirestore(newCustomer).catch(console.warn);
+    syncWithCloud({ customers: [newCustomer] });
   };
 
   const handleUpdateCustomer = (updatedCustomer: Customer) => {
     setCustomers(prev =>
       prev.map(c => (c.id === updatedCustomer.id ? updatedCustomer : c))
     );
-    saveCustomerToFirestore(updatedCustomer).catch(err => console.warn('Update customer Firestore sync:', err));
+    saveCustomerToFirestore(updatedCustomer).catch(console.warn);
+    syncWithCloud({ customers: [updatedCustomer] });
   };
 
   const handleSaveOrder = (newOrder: BakeryOrder) => {
     setOrders(prev => [newOrder, ...prev]);
-    saveOrderToFirestore(newOrder).catch(err => console.warn('Order Firestore sync:', err));
+    saveOrderToFirestore(newOrder).catch(console.warn);
+    syncWithCloud({ orders: [newOrder] });
   };
 
   const handleUpdateOrder = (updatedOrder: BakeryOrder) => {
     setOrders(prev => prev.map(o => (o.id === updatedOrder.id ? updatedOrder : o)));
-    saveOrderToFirestore(updatedOrder).catch(err => console.warn('Update order Firestore sync:', err));
+    saveOrderToFirestore(updatedOrder).catch(console.warn);
+    syncWithCloud({ orders: [updatedOrder] });
   };
 
   const handleToggleItemDone = (orderId: string, itemIdx: number) => {
@@ -333,6 +398,11 @@ export default function App() {
         pendingDeliveriesCount={pendingDeliveriesCount}
         zoomLevel={zoomLevel}
         onToggleZoom={handleToggleZoom}
+        firebaseStatus={firebaseStatus}
+        onConnectFirebase={handleConnectFirebase}
+        onDisconnectFirebase={handleDisconnectFirebase}
+        onManualSync={handleManualSync}
+        isSyncing={isSyncing}
       />
 
       {/* Main Content Area */}

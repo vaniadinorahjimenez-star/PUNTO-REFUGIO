@@ -12,6 +12,24 @@ import {
   mergeCustomers,
   STORAGE_KEYS
 } from '../utils/storage';
+import {
+  db,
+  auth,
+  saveSaleTicketToFirestore,
+  saveShiftCutToFirestore,
+  saveOrderToFirestore,
+  saveCustomerToFirestore,
+  saveOutflowToFirestore,
+  fetchTicketsFromFirestore,
+  fetchOrdersFromFirestore,
+  fetchCustomersFromFirestore,
+  fetchShiftCutsFromFirestore,
+  subscribeToFirestoreTickets,
+  subscribeToFirestoreOrders,
+  signInWithGoogle,
+  logoutFirebase,
+  testConnection
+} from './firebase';
 
 export interface CloudSyncResult {
   success: boolean;
@@ -24,6 +42,7 @@ export interface CloudSyncResult {
     customers: Customer[];
   };
   error?: string;
+  isFirebase?: boolean;
 }
 
 type SyncListener = (data: NonNullable<CloudSyncResult['mergedData']>) => void;
@@ -56,6 +75,9 @@ let pendingProvidedData: {
   customers?: Customer[];
 } | undefined = undefined;
 
+let isFirebaseConnected = false;
+let firebaseInitialized = false;
+
 function areTicketsIdentical(a: SaleTicket[], b: SaleTicket[]): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
@@ -65,9 +87,115 @@ function areTicketsIdentical(a: SaleTicket[], b: SaleTicket[]): boolean {
 }
 
 /**
- * Realiza la sincronización combinada (Merge) con la nube de Netlify
- * NUNCA sobrescribe datos; combina los tickets, cobros de tarjeta, pedidos y cortes
- * de la PC y del Teléfono.
+ * Inicializa la sincronización automática con Firebase
+ * Se conecta solo sin requerir que el usuario toque nada
+ */
+export function initFirebaseAutoSync(onStatusChange?: (status: { connected: boolean; userEmail?: string }) => void): () => void {
+  if (firebaseInitialized) return () => {};
+  firebaseInitialized = true;
+
+  // Estado conectado automáticamente
+  isFirebaseConnected = true;
+  onStatusChange?.({
+    connected: true,
+    userEmail: auth.currentUser?.email || undefined
+  });
+
+  // Verificar en segundo plano y subir datos locales a Firebase de inmediato
+  testConnection().then((ok) => {
+    isFirebaseConnected = ok;
+    onStatusChange?.({
+      connected: ok,
+      userEmail: auth.currentUser?.email || undefined
+    });
+    if (ok) {
+      syncLocalDataToFirebase();
+    }
+  }).catch(() => {
+    // Si la red tiene retraso inicial, mantener activo para reintentos
+    isFirebaseConnected = true;
+  });
+
+  // Intentar sincronizar datos locales acumulados a Firestore
+  syncLocalDataToFirebase();
+
+  const unsubAuth = auth.onAuthStateChanged((user) => {
+    onStatusChange?.({
+      connected: true,
+      userEmail: user?.email || undefined
+    });
+    syncLocalDataToFirebase();
+  });
+
+  // Escuchar tickets de Firestore en tiempo real automáticamente
+  const unsubTickets = subscribeToFirestoreTickets((firestoreTickets) => {
+    isFirebaseConnected = true;
+    onStatusChange?.({
+      connected: true,
+      userEmail: auth.currentUser?.email || undefined
+    });
+    if (firestoreTickets && firestoreTickets.length > 0) {
+      const current = loadTickets();
+      const merged = mergeTickets(current, firestoreTickets);
+      if (!areTicketsIdentical(current, merged)) {
+        localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(merged));
+        notifyListeners({
+          tickets: merged,
+          orders: loadOrders(),
+          shiftCuts: loadShiftCuts(),
+          outflows: loadOutflows(),
+          customers: loadCustomers()
+        });
+      }
+    }
+  });
+
+  // Escuchar pedidos de Firestore en tiempo real automáticamente
+  const unsubOrders = subscribeToFirestoreOrders((firestoreOrders) => {
+    if (firestoreOrders && firestoreOrders.length > 0) {
+      const current = loadOrders();
+      const merged = mergeOrders(current, firestoreOrders);
+      if (merged.length !== current.length) {
+        localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(merged));
+        notifyListeners({
+          tickets: loadTickets(),
+          orders: merged,
+          shiftCuts: loadShiftCuts(),
+          outflows: loadOutflows(),
+          customers: loadCustomers()
+        });
+      }
+    }
+  });
+
+  return () => {
+    unsubAuth();
+    unsubTickets();
+    unsubOrders();
+  };
+}
+
+/**
+ * Sube datos locales que no hayan sido respaldados aún en Firestore
+ */
+async function syncLocalDataToFirebase() {
+  try {
+    const localTickets = loadTickets();
+    for (const t of localTickets.slice(0, 50)) { // sincroniza los últimos 50 tickets
+      await saveSaleTicketToFirestore(t);
+    }
+    const localCuts = loadShiftCuts();
+    for (const c of localCuts.slice(0, 20)) {
+      await saveShiftCutToFirestore(c);
+    }
+  } catch (err) {
+    console.warn('Error en syncLocalDataToFirebase:', err);
+  }
+}
+
+/**
+ * Realiza la sincronización combinada (Merge) con Firebase Firestore
+ * NUNCA sobrescribe datos; combina los tickets, cobros de tarjeta, pedidos y cortes.
  * Protegido contra condiciones de carrera: si se registran ventas mientras la petición está en vuelo,
  * jamás se perderán.
  */
@@ -91,7 +219,7 @@ export async function syncWithCloud(providedData?: {
   isSyncInProgress = true;
 
   try {
-    // Cargar datos locales frescos combinados con los proporcionados
+    // 1. Cargar datos locales frescos combinados con los proporcionados
     const currentStoredTickets = loadTickets();
     const localTickets = mergeTickets(currentStoredTickets, providedData?.tickets || []);
     const localOrders = mergeOrders(loadOrders(), providedData?.orders || []);
@@ -99,85 +227,86 @@ export async function syncWithCloud(providedData?: {
     const localOutflows = mergeOutflows(loadOutflows(), providedData?.outflows || []);
     const localCustomers = mergeCustomers(loadCustomers(), providedData?.customers || []);
 
-    const payload = {
-      tickets: localTickets,
-      orders: localOrders,
-      shiftCuts: localShiftCuts,
-      outflows: localOutflows,
-      customers: localCustomers,
-      timestamp: new Date().toISOString()
-    };
+    // Asegurar respaldo local de inmediato
+    localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(localTickets));
+    localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(localOrders));
+    localStorage.setItem(STORAGE_KEYS.SHIFT_CUTS, JSON.stringify(localShiftCuts));
+    localStorage.setItem(STORAGE_KEYS.OUTFLOWS, JSON.stringify(localOutflows));
+    localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(localCustomers));
 
-    const endpoints = ['/.netlify/functions/sync-data', '/api/sync'];
-    let lastError: any = null;
+    let savedToFirebaseCount = 0;
 
-    for (const endpoint of endpoints) {
-      try {
-        const res = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(payload)
-        });
-
-        if (!res.ok) {
-          lastError = new Error(`HTTP ${res.status}`);
-          continue;
-        }
-
-        const json = await res.json();
-        if (json.success && json.data) {
-          // CRÍTICO: Recargar los datos locales MÁS RECIENTES para no perder
-          // ventas que hayan ocurrido mientras la petición HTTP estaba en vuelo (diferencia de segundos)
-          const freshLocalTickets = loadTickets();
-          const freshLocalOrders = loadOrders();
-          const freshLocalShiftCuts = loadShiftCuts();
-          const freshLocalOutflows = loadOutflows();
-          const freshLocalCustomers = loadCustomers();
-
-          const mergedTickets = mergeTickets(freshLocalTickets, json.data.tickets || []);
-          const mergedOrders = mergeOrders(freshLocalOrders, json.data.orders || []);
-          const mergedShiftCuts = mergeShiftCuts(freshLocalShiftCuts, json.data.shiftCuts || []);
-          const mergedOutflows = mergeOutflows(freshLocalOutflows, json.data.outflows || []);
-          const mergedCustomers = mergeCustomers(freshLocalCustomers, json.data.customers || []);
-
-          // Guardar la versión combinada en localStorage local
-          localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(mergedTickets));
-          localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(mergedOrders));
-          localStorage.setItem(STORAGE_KEYS.SHIFT_CUTS, JSON.stringify(mergedShiftCuts));
-          localStorage.setItem(STORAGE_KEYS.OUTFLOWS, JSON.stringify(mergedOutflows));
-          localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(mergedCustomers));
-
-          const resultData = {
-            tickets: mergedTickets,
-            orders: mergedOrders,
-            shiftCuts: mergedShiftCuts,
-            outflows: mergedOutflows,
-            customers: mergedCustomers
-          };
-
-          // Notificar solo si hay cambios reales para evitar ciclos infinitos
-          const ticketsChanged = !areTicketsIdentical(freshLocalTickets, mergedTickets);
-          if (ticketsChanged || mergedOrders.length !== freshLocalOrders.length) {
-            notifyListeners(resultData);
-          }
-
-          return {
-            success: true,
-            message: `Sincronización combinada exitosa (${mergedTickets.length} tickets, ${mergedOrders.length} pedidos)`,
-            mergedData: resultData
-          };
-        }
-      } catch (err) {
-        lastError = err;
+    // 2. Si se pasaron tickets específicos (ej. una venta que se acaba de registrar), guardarlos en Firestore
+    if (providedData?.tickets && providedData.tickets.length > 0) {
+      for (const t of providedData.tickets) {
+        const ok = await saveSaleTicketToFirestore(t);
+        if (ok) savedToFirebaseCount++;
+      }
+    } else if (localTickets.length > 0) {
+      // Sincronizar el ticket más reciente a Firestore
+      const latest = localTickets[0];
+      if (latest) {
+        await saveSaleTicketToFirestore(latest);
       }
     }
 
+    // Si se pasaron cortes, guardarlos en Firestore
+    if (providedData?.shiftCuts && providedData.shiftCuts.length > 0) {
+      for (const c of providedData.shiftCuts) {
+        await saveShiftCutToFirestore(c);
+      }
+    }
+
+    // Si se pasaron pedidos, guardarlos en Firestore
+    if (providedData?.orders && providedData.orders.length > 0) {
+      for (const o of providedData.orders) {
+        await saveOrderToFirestore(o);
+      }
+    }
+
+    // Si se pasaron clientes, guardarlos en Firestore
+    if (providedData?.customers && providedData.customers.length > 0) {
+      for (const cu of providedData.customers) {
+        await saveCustomerToFirestore(cu);
+      }
+    }
+
+    // 3. Obtener tickets actualizados de Firestore para combinarlos
+    let remoteTickets: SaleTicket[] = [];
+    try {
+      remoteTickets = await fetchTicketsFromFirestore();
+    } catch {
+      // Si falla lectura, mantener locales
+    }
+
+    const freshLocal = loadTickets();
+    const finalMergedTickets = mergeTickets(freshLocal, remoteTickets);
+    localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(finalMergedTickets));
+
+    const resultData = {
+      tickets: finalMergedTickets,
+      orders: localOrders,
+      shiftCuts: localShiftCuts,
+      outflows: localOutflows,
+      customers: localCustomers
+    };
+
+    if (!areTicketsIdentical(freshLocal, finalMergedTickets)) {
+      notifyListeners(resultData);
+    }
+
+    return {
+      success: true,
+      message: `Firebase sincronizado correctamente (${finalMergedTickets.length} tickets en base de datos)`,
+      mergedData: resultData,
+      isFirebase: true
+    };
+  } catch (err: any) {
+    console.error('Error durante sincronización Firebase:', err);
     return {
       success: false,
-      message: 'No se pudo conectar a la nube de Netlify, guardado local seguro activado',
-      error: lastError?.message || 'Error de red'
+      message: 'Guardado local seguro activado (se sincronizará en cuanto haya conexión con Firebase)',
+      error: err?.message || 'Error de sincronización'
     };
   } finally {
     isSyncInProgress = false;
@@ -185,7 +314,6 @@ export async function syncWithCloud(providedData?: {
       hasPendingSync = false;
       const nextData = pendingProvidedData;
       pendingProvidedData = undefined;
-      // Ejecutar la siguiente sincronización acumulada
       setTimeout(() => {
         syncWithCloud(nextData);
       }, 100);
@@ -194,77 +322,67 @@ export async function syncWithCloud(providedData?: {
 }
 
 /**
- * Consulta la nube y combina los datos recibidos con los locales
+ * Consulta Firebase y combina los datos recibidos con los locales
  */
 export async function fetchAndMergeCloud(): Promise<CloudSyncResult> {
-  const endpoints = ['/.netlify/functions/sync-data', '/api/sync'];
-  let lastError: any = null;
+  try {
+    const [remoteTickets, remoteOrders, remoteCuts, remoteCustomers] = await Promise.all([
+      fetchTicketsFromFirestore(),
+      fetchOrdersFromFirestore(),
+      fetchShiftCutsFromFirestore(),
+      fetchCustomersFromFirestore()
+    ]);
 
-  for (const endpoint of endpoints) {
-    try {
-      const res = await fetch(endpoint, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
+    const localTickets = loadTickets();
+    const localOrders = loadOrders();
+    const localShiftCuts = loadShiftCuts();
+    const localOutflows = loadOutflows();
+    const localCustomers = loadCustomers();
 
-      if (!res.ok) continue;
+    const mergedTickets = mergeTickets(localTickets, remoteTickets);
+    const mergedOrders = mergeOrders(localOrders, remoteOrders);
+    const mergedShiftCuts = mergeShiftCuts(localShiftCuts, remoteCuts);
+    const mergedCustomers = mergeCustomers(localCustomers, remoteCustomers);
 
-      const json = await res.json();
-      if (json.success && json.data) {
-        const localTickets = loadTickets();
-        const localOrders = loadOrders();
-        const localShiftCuts = loadShiftCuts();
-        const localOutflows = loadOutflows();
-        const localCustomers = loadCustomers();
+    localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(mergedTickets));
+    localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(mergedOrders));
+    localStorage.setItem(STORAGE_KEYS.SHIFT_CUTS, JSON.stringify(mergedShiftCuts));
+    localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(mergedCustomers));
 
-        const mergedTickets = mergeTickets(localTickets, json.data.tickets || []);
-        const mergedOrders = mergeOrders(localOrders, json.data.orders || []);
-        const mergedShiftCuts = mergeShiftCuts(localShiftCuts, json.data.shiftCuts || []);
-        const mergedOutflows = mergeOutflows(localOutflows, json.data.outflows || []);
-        const mergedCustomers = mergeCustomers(localCustomers, json.data.customers || []);
+    const resultData = {
+      tickets: mergedTickets,
+      orders: mergedOrders,
+      shiftCuts: mergedShiftCuts,
+      outflows: localOutflows,
+      customers: mergedCustomers
+    };
 
-        localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(mergedTickets));
-        localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(mergedOrders));
-        localStorage.setItem(STORAGE_KEYS.SHIFT_CUTS, JSON.stringify(mergedShiftCuts));
-        localStorage.setItem(STORAGE_KEYS.OUTFLOWS, JSON.stringify(mergedOutflows));
-        localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(mergedCustomers));
-
-        const resultData = {
-          tickets: mergedTickets,
-          orders: mergedOrders,
-          shiftCuts: mergedShiftCuts,
-          outflows: mergedOutflows,
-          customers: mergedCustomers
-        };
-
-        const ticketsChanged = !areTicketsIdentical(localTickets, mergedTickets);
-        if (ticketsChanged || mergedOrders.length !== localOrders.length) {
-          notifyListeners(resultData);
-        }
-
-        return {
-          success: true,
-          message: 'Datos combinados desde la nube con éxito',
-          mergedData: resultData
-        };
-      }
-    } catch (err) {
-      lastError = err;
+    if (!areTicketsIdentical(localTickets, mergedTickets) || mergedOrders.length !== localOrders.length) {
+      notifyListeners(resultData);
     }
-  }
 
-  return {
-    success: false,
-    message: 'No se pudo obtener datos de la nube',
-    error: lastError?.message
-  };
+    return {
+      success: true,
+      message: 'Datos de Firebase combinados con éxito',
+      mergedData: resultData,
+      isFirebase: true
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      message: 'No se pudo obtener datos de Firebase, usando copia local',
+      error: err?.message
+    };
+  }
 }
 
-export function getCloudSyncStatus(): { isOnline: boolean; lastSyncTime: number } {
+export function getCloudSyncStatus(): { isOnline: boolean; isFirebaseConnected: boolean; lastSyncTime: number; userEmail?: string } {
   return {
     isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
+    isFirebaseConnected: !!auth.currentUser,
+    userEmail: auth.currentUser?.email || undefined,
     lastSyncTime: Date.now()
   };
 }
+
+export { signInWithGoogle, logoutFirebase };

@@ -42,7 +42,8 @@ import { playBeep, playCashSound, playCelebrationFanfare } from '../../utils/aud
 import { ThermalShiftCutTicket } from './ThermalShiftCutTicket';
 import { CashDenominationSelector, calculateDenominationsTotal } from './CashDenominationSelector';
 import { calculateTicketsBreakdown } from '../../utils/productClassification';
-import { saveShiftCutToFirestore, saveOutflowToFirestore } from '../../services/firebaseSyncService';
+import { saveShiftCutToFirestore, saveOutflowToFirestore } from '../../services/firebase';
+import { syncWithCloud } from '../../services/cloudSyncService';
 
 interface CashShiftCutModalProps {
   isOpen: boolean;
@@ -140,7 +141,6 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
   const [newAmount, setNewAmount] = useState<string>('');
   const [newRecipient, setNewRecipient] = useState<string>('');
   const [newNotes, setNewNotes] = useState<string>('');
-  const [outflowError, setOutflowError] = useState<string | null>(null);
 
   // Observaciones y Notas
   const [notes, setNotes] = useState<string>('');
@@ -371,10 +371,9 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
   // Outflow Handlers
   const handleAddOutflow = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    setOutflowError(null);
     const amountNum = parseFloat(newAmount);
     if (!newConcept.trim() || isNaN(amountNum) || amountNum <= 0) {
-      setOutflowError('Por favor escribe el concepto y un monto válido para la salida.');
+      alert('Por favor escribe el concepto y un monto válido para la salida.');
       return;
     }
 
@@ -393,7 +392,8 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
     const updated = [newItem, ...allOutflows];
     setAllOutflows(updated);
     saveOutflows(updated);
-    saveOutflowToFirestore(newItem).catch(err => console.warn('Outflow Firestore sync:', err));
+    saveOutflowToFirestore(newItem).catch(console.warn);
+    syncWithCloud({ outflows: [newItem] });
 
     playCashSound();
     setNewConcept('');
@@ -467,7 +467,8 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
 
     const existingCuts = loadShiftCuts();
     saveShiftCuts([newCut, ...existingCuts]);
-    saveShiftCutToFirestore(newCut).catch(err => console.warn('ShiftCut Firestore sync:', err));
+    saveShiftCutToFirestore(newCut).catch(console.warn);
+    syncWithCloud({ shiftCuts: [newCut] });
 
     if (onCutSaved) {
       onCutSaved(newCut);
@@ -1154,12 +1155,6 @@ export const CashShiftCutModal: React.FC<CashShiftCutModalProps> = ({
                       <X className="w-4 h-4" />
                     </button>
                   </div>
-
-                  {outflowError && (
-                    <div className="p-2 bg-rose-100 border border-rose-300 text-rose-900 rounded-xl text-xs font-bold mb-2">
-                      ⚠️ {outflowError}
-                    </div>
-                  )}
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <div>
