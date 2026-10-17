@@ -243,12 +243,13 @@ export const PosCounter: React.FC<PosCounterProps> = ({
   const orderModalSubtotal = orderModalItems.reduce((acc, it) => acc + it.total, 0);
   const orderModalPieces = orderModalItems.reduce((acc, it) => acc + it.quantity, 0);
 
-  // Heart Bread Celebration Popup state (Cobro sin ticket)
+  // Heart Bread Celebration Popup state (Cobro sin ticket y con ticket)
   const [celebrationData, setCelebrationData] = useState<{
     total: number;
     folio: string;
     piecesCount: number;
     customerName?: string;
+    paymentMethod?: 'efectivo' | 'tarjeta';
   } | null>(null);
 
   // Descuento 10% Cliente Especial (Sucursal Zakia)
@@ -840,6 +841,15 @@ export const PosCounter: React.FC<PosCounterProps> = ({
     // Registrar de inmediato en la lista reactiva de últimos 2 cobros en vivo
     setRecentlyCreatedTickets(prev => [newTicket, ...prev.filter(t => t.id !== newTicket.id)]);
 
+    // Mostrar siempre la donita sonriente para confirmar la operación
+    setCelebrationData({
+      total,
+      folio,
+      piecesCount: totalPieces,
+      customerName: custIdentifier,
+      paymentMethod: 'efectivo'
+    });
+
     // Mandar DIRECTO a impresión térmica sin ventana secundaria
     setDirectPrintTicket(newTicket);
     setPrintToastNotice(`🖨️ Imprimiendo Ticket #${folio} ($${total}.00)...`);
@@ -1009,6 +1019,15 @@ export const PosCounter: React.FC<PosCounterProps> = ({
     // Registrar de inmediato en la lista reactiva de últimos 2 cobros en vivo
     setRecentlyCreatedTickets(prev => [newTicket, ...prev.filter(t => t.id !== newTicket.id)]);
     setShowZettleModal(false);
+
+    // Mostrar donita sonriente para confirmar la operación de tarjeta
+    setCelebrationData({
+      total,
+      folio,
+      piecesCount: totalPieces,
+      customerName: custIdentifier,
+      paymentMethod: 'tarjeta'
+    });
 
     // Mandar directo a impresión térmica sin abrir modal secundario
     setDirectPrintTicket(newTicket);
@@ -4542,13 +4561,14 @@ export const PosCounter: React.FC<PosCounterProps> = ({
         />
       )}
 
-      {/* Smiling Donut Celebration Modal (Cobro sin ticket) */}
+      {/* Smiling Donut Celebration Modal (Confirmación visual de cobro registrado) */}
       {celebrationData && (
         <HeartBreadCelebration
           total={celebrationData.total}
           folio={celebrationData.folio}
           piecesCount={celebrationData.piecesCount}
           customerName={celebrationData.customerName}
+          paymentMethod={celebrationData.paymentMethod}
           onClose={() => setCelebrationData(null)}
         />
       )}

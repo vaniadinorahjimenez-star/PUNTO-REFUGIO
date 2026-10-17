@@ -7,6 +7,7 @@ interface HeartBreadCelebrationProps {
   folio: string;
   piecesCount: number;
   customerName?: string;
+  paymentMethod?: 'efectivo' | 'tarjeta';
   onClose: () => void;
 }
 
@@ -24,16 +25,16 @@ interface DonutVariant {
 const DONUT_VARIANTS: DonutVariant[] = [
   {
     type: 'bounce',
-    title: '¡Venta Registrada sin Ticket!',
-    phrase: '¡Dona calientita y sonriente para alegrar el día!',
+    title: '¡Venta Registrada con Éxito!',
+    phrase: '¡Operación guardada en caja y en la nube!',
     glazeColor: '#F43F5E', // Strawberry pink
     glazeStop: '#BE123C',
     badgeBg: 'bg-rose-500'
   },
   {
     type: 'wink',
-    title: '¡Cobro sin Ticket Listo!',
-    phrase: '¡Dona glaseada con chispitas de pura felicidad!',
+    title: '¡Cobro Registrado!',
+    phrase: '¡Operación guardada en Firebase y en sistema!',
     glazeColor: '#FB7185', // Rose pink
     glazeStop: '#E11D48',
     badgeBg: 'bg-pink-500'
@@ -41,7 +42,7 @@ const DONUT_VARIANTS: DonutVariant[] = [
   {
     type: 'wiggle',
     title: '¡Venta Exitosa!',
-    phrase: '¡Gracias por su compra! ¡Pan fresco del día!',
+    phrase: '¡Dona calientita! Operación asegurada en el sistema.',
     glazeColor: '#EC4899', // Vibrant pink
     glazeStop: '#9D174D',
     badgeBg: 'bg-amber-500'
@@ -49,7 +50,7 @@ const DONUT_VARIANTS: DonutVariant[] = [
   {
     type: 'glow',
     title: '¡Cobro Completado!',
-    phrase: '¡Dona especial recién horneada con mucho amor!',
+    phrase: '¡Venta registrada sin problemas en mostrador y nube!',
     glazeColor: '#F43F5E',
     glazeStop: '#881337',
     badgeBg: 'bg-emerald-500'
@@ -61,6 +62,7 @@ export const HeartBreadCelebration: React.FC<HeartBreadCelebrationProps> = ({
   folio,
   piecesCount,
   customerName,
+  paymentMethod,
   onClose
 }) => {
   const [variant] = useState<DonutVariant>(() => {
@@ -124,7 +126,11 @@ export const HeartBreadCelebration: React.FC<HeartBreadCelebrationProps> = ({
         {/* Top Mini Badge */}
         <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-black text-white shadow-sm mb-2 bg-gradient-to-r from-pink-500 to-rose-600 animate-pulse">
           <Sparkles className="w-3.5 h-3.5" />
-          <span>COBRO SIN TICKET</span>
+          <span>
+            {paymentMethod === 'tarjeta'
+              ? '💳 COBRO CON TARJETA REGISTRADO'
+              : '🍩 VENTA REGISTRADA CON ÉXITO'}
+          </span>
         </div>
 
         {/* Animated Smiling Donut Illustration */}
@@ -354,6 +360,10 @@ export const HeartBreadCelebration: React.FC<HeartBreadCelebrationProps> = ({
               Cliente: {customerName}
             </div>
           )}
+          <div className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-800 rounded-full border border-emerald-300 text-[11px] font-black shadow-2xs">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span>Operación Asegurada en Caja y Firebase</span>
+          </div>
         </div>
 
         {/* Motivational Phrase */}
